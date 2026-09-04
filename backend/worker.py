@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+from logging.handlers import RotatingFileHandler
 import os
 import time
 from datetime import timedelta
@@ -12,6 +14,7 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.application.ingestion_service import IngestionService
+from app.application.publication_service import PublicationService
 from app.config import get_settings
 from app.infrastructure.db.models import IndexPublicationRequest, IngestionArtifact, IngestionJob, MetadataChangeRequest, utc_now
 from app.infrastructure.db.session import get_session_factory
@@ -20,6 +23,38 @@ from knowledge.management import KnowledgeManagementService
 
 
 WORKER_STATES = ("UPLOADED", "PARSE_QUEUED", "CHUNK_QUEUED")
+LOGGER = logging.getLogger("policy_platform.worker")
+
+
+def configure_logging() -> None:
+    """使用标准库输出控制台和滚动文件日志，空闲轮询保持安静。"""
+
+    if LOGGER.handlers:
+        return
+    level_name = os.getenv("PLATFORM_WORKER_LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S%z",
+    )
+    console = logging.StreamHandler()
+    console.setFormatter(formatter)
+    log_path = Path(os.getenv(
+        "PLATFORM_WORKER_LOG_FILE",
+        str(Path(__file__).resolve().parents[1] / "logs" / "worker.log"),
+    )).resolve()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    file_handler = RotatingFileHandler(
+        log_path,
+        maxBytes=int(os.getenv("PLATFORM_WORKER_LOG_MAX_BYTES", str(10 * 1024 * 1024))),
+        backupCount=int(os.getenv("PLATFORM_WORKER_LOG_BACKUP_COUNT", "5")),
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(formatter)
+    LOGGER.setLevel(level)
+    LOGGER.addHandler(console)
+    LOGGER.addHandler(file_handler)
+    LOGGER.propagate = False
 
 
 class KnowledgeRunFailedError(RuntimeError):
@@ -57,12 +92,19 @@ def run_once(worker_id: str) -> bool:
 
     settings = get_settings()
     paths = KnowledgePaths(settings.knowledge_data_root)
-    management = KnowledgeManagementService(paths, progress=lambda message: print(message, flush=True))
+    management = KnowledgeManagementService(
+        paths,
+        progress=lambda message: LOGGER.info("event=knowledge_progress message=%s", message),
+    )
     with get_session_factory()() as session:
         publication = session.scalar(select(IndexPublicationRequest).where(
             IndexPublicationRequest.status.in_(["BUILD_QUEUED", "PUBLISH_QUEUED"])
         ).order_by(IndexPublicationRequest.created_at))
         if publication is not None:
+            LOGGER.info(
+                "event=publication_claimed worker_id=%s publication_id=%s status=%s",
+                worker_id, publication.id, publication.status,
+            )
             return run_publication(session, publication, management, paths)
         job = session.scalar(select(IngestionJob).where(IngestionJob.state.in_(WORKER_STATES)).order_by(IngestionJob.created_at))
         if job is None:
@@ -72,6 +114,11 @@ def run_once(worker_id: str) -> bool:
         job.lease_expires_at = utc_now() + timedelta(minutes=10)
         job.heartbeat_at = utc_now()
         session.commit()
+        started = time.perf_counter()
+        LOGGER.info(
+            "event=job_claimed worker_id=%s job_id=%s document_id=%s state=%s attempt=%s",
+            worker_id, job.id, job.document_id, job.state, job.attempt_no,
+        )
         try:
             if job.state == "UPLOADED":
                 ingestion.transition(job, "PREFLIGHTING", "单Worker开始异步预检")
@@ -100,6 +147,12 @@ def run_once(worker_id: str) -> bool:
             job.lease_owner = None
             job.lease_expires_at = None
             session.commit()
+            LOGGER.info(
+                "event=job_stage_completed worker_id=%s job_id=%s document_id=%s state=%s "
+                "parse_run_id=%s chunk_run_id=%s elapsed_ms=%d",
+                worker_id, job.id, job.document_id, job.state, job.parse_run_id,
+                job.chunk_run_id, int((time.perf_counter() - started) * 1000),
+            )
         except Exception as exc:
             failed_stage = job.state
             job.failed_stage = failed_stage
@@ -112,6 +165,12 @@ def run_once(worker_id: str) -> bool:
                 job.error_code = exc.__class__.__name__.upper()
             job.error_summary = str(exc)[:1000]
             ingestion.transition(job, "FAILED", f"{failed_stage}失败：{exc}")
+            LOGGER.exception(
+                "event=job_stage_failed worker_id=%s job_id=%s document_id=%s "
+                "failed_stage=%s error_code=%s retryable=%s elapsed_ms=%d",
+                worker_id, job.id, job.document_id, failed_stage, job.error_code,
+                job.retryable, int((time.perf_counter() - started) * 1000),
+            )
         return True
 
 
@@ -120,61 +179,124 @@ def run_publication(session, publication: IndexPublicationRequest, management: K
 
     ingestion = IngestionService(session, paths)
     document_ids = [int(value) for value in json.loads(publication.source_document_ids_json)]
-    jobs = list(session.scalars(select(IngestionJob).where(
-        IngestionJob.document_id.in_(document_ids)
-    ).order_by(IngestionJob.created_at)).all())
+    publication_service = PublicationService(session, ingestion)
+    bound_sources = []
+    started = time.perf_counter()
     try:
+        bound_sources = publication_service.bound_sources(publication.id)
         if publication.status == "BUILD_QUEUED":
+            invalid = [
+                (job.id, job.state)
+                for _binding, job in bound_sources
+                if job is not None and job.state != "INDEX_QUEUED"
+            ]
+            if invalid:
+                raise RuntimeError(f"发布请求绑定任务状态不一致：{invalid}")
             publication.status = "BUILDING"
             session.commit()
-            for job in jobs:
-                if job.state == "INDEX_QUEUED":
-                    ingestion.transition(job, "INDEXING", f"开始构建索引发布请求 {publication.id}")
+            for _binding, job in bound_sources:
+                if job is None:
+                    continue
+                ingestion.transition(job, "INDEXING", f"开始构建索引发布请求 {publication.id}")
+            LOGGER.info(
+                "event=index_build_started publication_id=%s documents=%s bound_jobs=%d",
+                publication.id, document_ids,
+                sum(1 for _binding, job in bound_sources if job is not None),
+            )
             result = management.build_index_run(required_document_ids=document_ids)
             publication.index_run_id = int(result["index_run_id"])
-            publication.status = "READY_TO_PUBLISH"
-            for job in jobs:
-                if job.state == "INDEXING":
-                    job.index_run_id = publication.index_run_id
-                    ingestion.transition(
-                        job, "READY_TO_PUBLISH", "全局IndexRun已完成核验",
-                        run_type="INDEX_RUN", run_id=publication.index_run_id,
+            sources = {
+                int(source["document_id"]): source
+                for source in management.index_run_sources(publication.index_run_id)
+            }
+            for binding, _job in bound_sources:
+                source = sources.get(binding.document_id)
+                expected = (
+                    binding.parse_run_id,
+                    binding.chunk_run_id,
+                    binding.metadata_revision_id,
+                )
+                actual = (
+                    int(source["parse_run_id"]),
+                    int(source["chunk_run_id"]),
+                    int(source["metadata_revision_id"]),
+                ) if source else None
+                if actual != expected:
+                    raise RuntimeError(
+                        f"制度 {binding.document_id} 的发布绑定与IndexRun来源不一致："
+                        f"expected={expected}, actual={actual}"
                     )
+                binding.index_run_id = publication.index_run_id
+            publication.status = "READY_TO_PUBLISH"
+            for _binding, job in bound_sources:
+                if job is None:
+                    continue
+                job.index_run_id = publication.index_run_id
+                ingestion.transition(
+                    job, "READY_TO_PUBLISH", "全局IndexRun已完成核验",
+                    run_type="INDEX_RUN", run_id=publication.index_run_id,
+                )
             session.commit()
+            LOGGER.info(
+                "event=index_build_completed publication_id=%s index_run_id=%s reused=%s "
+                "source_documents=%d elapsed_ms=%d",
+                publication.id, publication.index_run_id, result.get("reused"),
+                len(sources), int((time.perf_counter() - started) * 1000),
+            )
             return True
 
+        invalid = [
+            (job.id, job.state)
+            for _binding, job in bound_sources
+            if job is not None and job.state != "READY_TO_PUBLISH"
+        ]
+        if invalid:
+            raise RuntimeError(f"发布请求绑定任务状态不一致：{invalid}")
         publication.status = "PUBLISHING"
         session.commit()
-        for job in jobs:
-            if job.state == "READY_TO_PUBLISH":
-                ingestion.transition(job, "PUBLISH_QUEUED", f"发布请求 {publication.id} 已获管理员确认")
-            if job.state == "PUBLISH_QUEUED":
-                ingestion.transition(job, "PUBLISHING", "开始原子切换Platform Qdrant Alias")
+        for _binding, job in bound_sources:
+            if job is None:
+                continue
+            ingestion.transition(job, "PUBLISH_QUEUED", f"发布请求 {publication.id} 已获管理员确认")
+            ingestion.transition(job, "PUBLISHING", "开始原子切换Platform Qdrant Alias")
         if publication.index_run_id is None:
             raise ValueError("发布请求缺少IndexRun ID")
+        LOGGER.info(
+            "event=alias_switch_started publication_id=%s index_run_id=%s alias=%s",
+            publication.id, publication.index_run_id, publication.alias_name,
+        )
         management.publish_index_run(publication.index_run_id)
         # 只有Alias切换和核验均成功，才写入正式发布状态。
         publication.status = "PUBLISHED"
         publication.published_at = utc_now()
-        for job in jobs:
-            if job.state == "PUBLISHING":
-                ingestion.transition(
-                    job, "PUBLISHED", "Alias切换成功，制度正式发布",
-                    run_type="INDEX_RUN", run_id=publication.index_run_id,
-                )
+        for _binding, job in bound_sources:
+            if job is None:
+                continue
+            ingestion.transition(
+                job, "PUBLISHED", "Alias切换成功，制度正式发布",
+                run_type="INDEX_RUN", run_id=publication.index_run_id,
+            )
+        metadata_revision_ids = [binding.metadata_revision_id for binding, _job in bound_sources]
         changes = list(session.scalars(select(MetadataChangeRequest).where(
-            MetadataChangeRequest.document_id.in_(document_ids),
+            MetadataChangeRequest.metadata_revision_id.in_(metadata_revision_ids),
             MetadataChangeRequest.status == "APPROVED",
         )).all())
         for change in changes:
             change.status = "PUBLISHED"
         session.commit()
+        LOGGER.info(
+            "event=alias_switch_completed publication_id=%s index_run_id=%s elapsed_ms=%d",
+            publication.id, publication.index_run_id,
+            int((time.perf_counter() - started) * 1000),
+        )
         return True
     except Exception as exc:
         failed_stage = publication.status
         publication.status = "FAILED"
         publication.error_summary = f"{type(exc).__name__}: {exc}"[:2000]
-        for job in jobs:
+        for _binding, job in bound_sources:
+            if job is None:
+                continue
             if job.state in {"INDEXING", "PUBLISHING"}:
                 job.failed_stage = job.state
                 job.retryable = True
@@ -182,15 +304,25 @@ def run_publication(session, publication: IndexPublicationRequest, management: K
                 job.error_summary = str(exc)[:1000]
                 ingestion.transition(job, "FAILED", f"{failed_stage}失败：{exc}")
         session.commit()
+        LOGGER.exception(
+            "event=publication_failed publication_id=%s failed_stage=%s error_code=%s elapsed_ms=%d",
+            publication.id, failed_stage, exc.__class__.__name__.upper(),
+            int((time.perf_counter() - started) * 1000),
+        )
         return True
 
 
 def main() -> int:
+    configure_logging()
     parser = argparse.ArgumentParser(description="制度知识平台单Worker")
     parser.add_argument("--once", action="store_true", help="只推进一个任务阶段后退出")
     parser.add_argument("--poll-seconds", type=float, default=2.0)
     args = parser.parse_args()
     worker_id = f"local-worker-{os.getpid()}"
+    LOGGER.info(
+        "event=worker_started worker_id=%s once=%s poll_seconds=%s",
+        worker_id, args.once, args.poll_seconds,
+    )
     while True:
         worked = run_once(worker_id)
         if args.once:

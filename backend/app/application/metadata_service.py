@@ -160,8 +160,15 @@ class MetadataApplicationService:
                 created_by=actor_user_id,
             )
             self.session.add(request)
-        elif job_id and request.job_id is None:
-            request.job_id = job_id
+        else:
+            if request.request_type != request_type:
+                raise MetadataConflictError(
+                    f"元数据修订已绑定 {request.request_type} 请求，不能改作 {request_type}"
+                )
+            if job_id and request.job_id not in {None, job_id}:
+                raise MetadataConflictError("元数据修订已经绑定其他入库任务")
+            if job_id and request.job_id is None:
+                request.job_id = job_id
         return request
 
     @staticmethod

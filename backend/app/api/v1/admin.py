@@ -279,13 +279,20 @@ def index_status(_principal: Principal = Depends(require_permission("admin.acces
 
 @router.get("/index-publications")
 def list_index_publications(session: Session = Depends(get_db_session), _principal: Principal = Depends(require_permission("admin.access"))):
-    return [publication_dict(item) for item in PublicationService(session, ingestion(session)).list()]
+    service = PublicationService(session, ingestion(session))
+    return [
+        publication_dict(
+            item,
+            can_retry=item.status == "FAILED" and service.has_complete_bindings(item.id),
+        )
+        for item in service.list()
+    ]
 
 
 @router.post("/index-publications", status_code=202)
 def create_index_publication(payload: IndexPublicationCreateRequest, session: Session = Depends(get_db_session), principal: Principal = Depends(require_permission("knowledge.index.publish", csrf=True))):
     try:
-        return publication_dict(PublicationService(session, ingestion(session)).create(
+        return publication_dict(PublicationService(session, ingestion(session), management()).create(
             payload.document_ids, principal.user_id
         ))
     except (JobConflictError, ValueError) as exc:

@@ -56,6 +56,10 @@ Set-Location 'D:\2-code\policy-platform'
 & 'D:\2-code\policy-platform\scripts\dev-worker.ps1'
 ```
 
+Worker 默认把任务领取、阶段完成/失败、知识处理进度、IndexRun 构建和 Alias 切换事件写入
+`logs/worker.log`，并按 10 MB、5 个历史文件滚动。路径和滚动参数可通过 `.env.example`
+中的 `PLATFORM_WORKER_LOG_*` 变量调整。
+
 访问地址：
 
 - 前端：`http://127.0.0.1:5173/`

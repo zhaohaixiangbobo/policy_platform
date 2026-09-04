@@ -170,6 +170,64 @@ class KnowledgeManagementService:
                 required_document_ids=required_document_ids,
             )
 
+    def index_run_sources(self, run_id: int) -> list[dict[str, Any]]:
+        """返回IndexRun冻结的精确来源版本，供Platform发布编排核对绑定。"""
+
+        with IndexDatabase(self.paths.database_path) as database:
+            rows = database.connection.execute(
+                """
+                SELECT document_id,parse_run_id,chunk_run_id,metadata_revision_id,
+                       retrievable_count,source_digest
+                FROM index_run_source WHERE index_run_id=? ORDER BY document_id
+                """,
+                (run_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def publication_source(self, document_id: int, metadata_revision_id: int) -> dict[str, int]:
+        """解析待发布修订对应的精确active ParseRun与ChunkRun版本。"""
+
+        with ParserDatabase(self.paths.database_path) as database:
+            row = database.connection.execute(
+                """
+                SELECT d.id AS document_id,d.active_parse_run_id,d.active_chunk_run_id,
+                       mr.id AS metadata_revision_id,mr.parse_run_id AS metadata_parse_run_id,
+                       mr.lifecycle_status,cr.parse_run_id AS chunk_parse_run_id,
+                       cr.status AS chunk_status,cr.review_status AS chunk_review_status
+                FROM policy_document d
+                JOIN document_metadata_revision mr ON mr.id=? AND mr.document_id=d.id
+                JOIN chunk_run cr ON cr.id=d.active_chunk_run_id
+                WHERE d.id=?
+                """,
+                (metadata_revision_id, document_id),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"制度 {document_id} 缺少待发布元数据或active ChunkRun")
+            if row["lifecycle_status"] not in {"APPROVED", "PUBLISHED"}:
+                raise ValueError(f"元数据修订 {metadata_revision_id} 尚未审核通过")
+            if any(
+                row[name] is None
+                for name in ("active_parse_run_id", "metadata_parse_run_id", "chunk_parse_run_id")
+            ):
+                raise ValueError(f"制度 {document_id} 缺少完整的ParseRun来源")
+            run_ids = {
+                int(row["active_parse_run_id"]),
+                int(row["metadata_parse_run_id"]),
+                int(row["chunk_parse_run_id"]),
+            }
+            if len(run_ids) != 1:
+                raise ValueError(f"制度 {document_id} 的ParseRun、ChunkRun和元数据版本不一致")
+            if row["chunk_status"] != "succeeded" or row["chunk_review_status"] not in {
+                "approved", "not_required"
+            }:
+                raise ValueError(f"制度 {document_id} 的active ChunkRun尚未审核通过")
+            return {
+                "document_id": int(row["document_id"]),
+                "parse_run_id": int(row["active_parse_run_id"]),
+                "chunk_run_id": int(row["active_chunk_run_id"]),
+                "metadata_revision_id": int(row["metadata_revision_id"]),
+            }
+
     def publish_index_run(self, run_id: int) -> dict[str, Any]:
         """管理员确认后原子切换Platform独立alias和active IndexRun。"""
 

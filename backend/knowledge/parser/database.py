@@ -36,6 +36,14 @@ class ParserDatabase:
     def close(self) -> None:
         self.connection.close()
 
+    def __enter__(self) -> "ParserDatabase":
+        """支持在服务和迁移中明确限定数据库连接生命周期。"""
+
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self.close()
+
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
         """将一个解析阶段包装成事务，失败时只回滚当前阶段。"""
@@ -436,16 +444,6 @@ class ParserDatabase:
         self._ensure_column("parse_run", "run_kind", "TEXT NOT NULL DEFAULT 'AUTOMATED'")
         self._ensure_column("document_metadata_revision", "status_confirmation_note", "TEXT")
         self._ensure_column("document_metadata_revision", "parse_run_id", "INTEGER")
-        self.connection.execute(
-            """
-            UPDATE document_metadata_revision
-            SET parse_run_id=(
-                SELECT d.active_parse_run_id FROM policy_document d
-                WHERE d.id=document_metadata_revision.document_id
-            )
-            WHERE parse_run_id IS NULL
-            """
-        )
         self._ensure_column("parse_run", "review_status", "TEXT NOT NULL DEFAULT 'pending'")
         self._ensure_column("parse_run", "reviewed_by", "TEXT")
         self._ensure_column("parse_run", "reviewed_at", "TEXT")
@@ -511,111 +509,6 @@ class ParserDatabase:
                     "UPDATE chunk_validation_issue SET details_json=? WHERE id=?",
                     (json.dumps(details, ensure_ascii=False, sort_keys=True), int(row["id"])),
                 )
-        self._backfill_policy_series_and_metadata()
-
-    def _backfill_policy_series_and_metadata(self) -> None:
-        """为既有正式文件建立制度系列和首个元数据修订，不改变公开范围。"""
-
-        documents = self.connection.execute(
-            "SELECT * FROM policy_document ORDER BY id"
-        ).fetchall()
-        for document in documents:
-            document_id = int(document["id"])
-            series_id = document["series_id"]
-            if series_id is None:
-                now = utc_now()
-                cursor = self.connection.execute(
-                    """
-                    INSERT INTO policy_series (
-                        series_key, canonical_title, status, created_at, updated_at
-                    ) VALUES (?, ?, 'ACTIVE', ?, ?)
-                    """,
-                    (
-                        f"policy-series-{document_id}",
-                        str(document["title"] or document["file_name"] or f"制度{document_id}"),
-                        now,
-                        now,
-                    ),
-                )
-                series_id = int(cursor.lastrowid)
-                self.connection.execute(
-                    "UPDATE policy_document SET series_id=?, document_version_no=1 WHERE id=?",
-                    (series_id, document_id),
-                )
-            if document["latest_metadata_revision_id"] is not None:
-                continue
-
-            active_source = self.connection.execute(
-                """
-                SELECT 1
-                FROM index_profile ip
-                JOIN index_run_source src ON src.index_run_id=ip.active_index_run_id
-                WHERE src.document_id=?
-                LIMIT 1
-                """,
-                (document_id,),
-            ).fetchone() if self._table_exists("index_run_source") else None
-            lifecycle_status = "PUBLISHED" if active_source else "DRAFT"
-            now = utc_now()
-            values = {
-                name: document[name]
-                for name in (
-                    "title", "document_code", "document_type", "issuing_org",
-                    "addressee_text", "authority_level", "publish_date", "effective_date",
-                    "expiry_date", "status", "version", "owner_department",
-                    "confidentiality_level",
-                )
-            }
-            content_hash = self._metadata_hash(values)
-            cursor = self.connection.execute(
-                """
-                INSERT INTO document_metadata_revision (
-                    document_id, parse_run_id, revision_no, source_type, title, document_code,
-                    document_type, issuing_org, addressee_text, authority_level,
-                    publish_date, effective_date, expiry_date, status, version,
-                    owner_department, confidentiality_level, lifecycle_status,
-                    content_hash, published_at, created_at, updated_at
-                ) VALUES (?, ?, 1, 'BACKFILL', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    document_id,
-                    document["active_parse_run_id"],
-                    values["title"], values["document_code"], values["document_type"],
-                    values["issuing_org"], values["addressee_text"], values["authority_level"],
-                    values["publish_date"], values["effective_date"], values["expiry_date"],
-                    values["status"] or "unknown", values["version"],
-                    values["owner_department"], values["confidentiality_level"],
-                    lifecycle_status, content_hash,
-                    now if lifecycle_status == "PUBLISHED" else None, now, now,
-                ),
-            )
-            revision_id = int(cursor.lastrowid)
-            approved_id = revision_id if lifecycle_status == "PUBLISHED" else None
-            active_id = revision_id if lifecycle_status == "PUBLISHED" else None
-            self.connection.execute(
-                """
-                UPDATE policy_document
-                SET latest_metadata_revision_id=?, approved_metadata_revision_id=?,
-                    active_metadata_revision_id=?
-                WHERE id=?
-                """,
-                (revision_id, approved_id, active_id, document_id),
-            )
-
-    def _table_exists(self, table: str) -> bool:
-        row = self.connection.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
-        ).fetchone()
-        return row is not None
-
-    @staticmethod
-    def _metadata_hash(values: dict[str, Any]) -> str:
-        """计算不依赖字段顺序的元数据内容摘要。"""
-
-        import hashlib
-
-        payload = json.dumps(values, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def get_or_create_document(self, data: dict[str, Any]) -> int:
         row = self.connection.execute(
@@ -639,6 +532,7 @@ class ParserDatabase:
                     document_id,
                 ),
             )
+            self.ensure_document_series(document_id)
             self.connection.commit()
             return document_id
 
@@ -659,8 +553,41 @@ class ParserDatabase:
                 now,
             ),
         )
+        document_id = int(cursor.lastrowid)
+        self.ensure_document_series(document_id)
         self.connection.commit()
-        return int(cursor.lastrowid)
+        return document_id
+
+    def ensure_document_series(self, document_id: int) -> int:
+        """在正常建档流程中为正式文件版本建立默认制度系列。"""
+
+        document = self.connection.execute(
+            "SELECT id,series_id,title,file_name FROM policy_document WHERE id=?",
+            (document_id,),
+        ).fetchone()
+        if document is None:
+            raise LookupError(f"Document 不存在：{document_id}")
+        if document["series_id"] is not None:
+            return int(document["series_id"])
+        now = utc_now()
+        cursor = self.connection.execute(
+            """
+            INSERT INTO policy_series (series_key,canonical_title,status,created_at,updated_at)
+            VALUES (?,?,'ACTIVE',?,?)
+            """,
+            (
+                f"policy-series-{document_id}",
+                str(document["title"] or document["file_name"] or f"制度{document_id}"),
+                now,
+                now,
+            ),
+        )
+        series_id = int(cursor.lastrowid)
+        self.connection.execute(
+            "UPDATE policy_document SET series_id=?,document_version_no=1 WHERE id=?",
+            (series_id, document_id),
+        )
+        return series_id
 
     def create_parse_run(
         self, document_id: int, parser_version: str, config_hash: str

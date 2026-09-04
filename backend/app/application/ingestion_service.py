@@ -217,6 +217,42 @@ class IngestionService:
         self.session.add(IngestionJobEvent(job_id=job.id, from_state=previous, to_state=target, actor_user_id=actor_user_id, reason=reason, run_type=run_type, run_id=run_id))
         self.session.commit()
 
+    def reconcile_published_job(
+        self,
+        job: IngestionJob,
+        *,
+        index_run_id: int,
+        parse_run_id: int,
+        chunk_run_id: int,
+        reason: str,
+    ) -> None:
+        """在知识侧已正式生效且版本完全匹配时修复中断的Platform任务状态。"""
+
+        if job.state != "FAILED" or job.failed_stage not in {"INDEXING", "PUBLISHING"}:
+            raise JobConflictError("只有索引或发布阶段失败的任务可以协调为已发布")
+        if job.parse_run_id != parse_run_id or job.chunk_run_id != chunk_run_id:
+            raise JobConflictError("任务Run版本与active IndexRun来源不一致")
+        previous = job.state
+        job.state = "PUBLISHED"
+        job.state_version += 1
+        job.stage_progress = 100
+        job.index_run_id = index_run_id
+        job.retryable = False
+        job.failed_stage = None
+        job.error_code = None
+        job.error_summary = None
+        job.lease_owner = None
+        job.lease_expires_at = None
+        self.session.add(IngestionJobEvent(
+            job_id=job.id,
+            from_state=previous,
+            to_state="PUBLISHED",
+            reason=reason,
+            run_type="INDEX_RUN",
+            run_id=index_run_id,
+        ))
+        self.session.commit()
+
     def _validate_docx(self, content: bytes) -> None:
         if not content or len(content) > self.MAX_UPLOAD_BYTES:
             raise InvalidDocumentError("DOCX为空或超过50MB安全上限")

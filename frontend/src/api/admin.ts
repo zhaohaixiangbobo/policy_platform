@@ -173,7 +173,7 @@ export interface ManagedDocumentDetail {
 }
 
 export interface PolicySeries { id: number; series_key: string; canonical_title: string; status: string; document_count: number }
-export interface IndexPublication { id: string; status: string; document_ids: number[]; index_run_id: number | null; alias_name: string; error_summary: string | null; created_at: string; published_at: string | null }
+export interface IndexPublication { id: string; status: string; document_ids: number[]; index_run_id: number | null; alias_name: string; error_summary: string | null; can_retry: boolean; created_at: string; published_at: string | null }
 export interface IngestionBatch { id: string; name: string; status: string; file_count: number; created_at: string; completed_at: string | null }
 
 export const listManagedDocuments = () => requestJson<ManagedDocument[]>('/api/v1/admin/knowledge/documents');
@@ -187,6 +187,7 @@ export const reviewMetadataRevision = (documentId: number, revisionId: number, a
 export const listIndexPublications = () => requestJson<IndexPublication[]>('/api/v1/admin/index-publications');
 export const createIndexPublication = (documentIds: number[]) => requestJson<IndexPublication>('/api/v1/admin/index-publications', { method: 'POST', body: JSON.stringify({ document_ids: documentIds }) });
 export const confirmIndexPublication = (requestId: string) => requestJson<IndexPublication>(`/api/v1/admin/index-publications/${requestId}/publish`, { method: 'POST' });
+export const retryIndexPublication = (requestId: string) => requestJson<IndexPublication>(`/api/v1/admin/index-publications/${requestId}/retry`, { method: 'POST' });
 export const createParseCorrection = (documentId: number, payload: { source_parse_run_id: number; source_node_id: number; title?: string | null; node_number?: string | null; node_type?: string | null; parent_id?: number | null; order_no?: number | null }) => requestJson<Record<string, unknown>>(`/api/v1/admin/knowledge/documents/${documentId}/parse-corrections`, { method: 'POST', body: JSON.stringify(payload) });
 
 export const createBatch = (name: string) => requestJson<IngestionBatch>('/api/v1/admin/batches', { method: 'POST', body: JSON.stringify({ name }) });

@@ -6,8 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.application.ingestion_service import IngestionService
-from app.infrastructure.db.models import IngestionJob, MetadataChangeRequest, ReviewIssue, ReviewRecord
+from app.application.metadata_service import MetadataApplicationService
+from app.infrastructure.db.models import IngestionJob, ReviewIssue, ReviewRecord
 from knowledge.management import KnowledgeManagementService
+from knowledge.metadata_service import KnowledgeMetadataService
 from knowledge.read_service import KnowledgeReadService
 
 
@@ -80,17 +82,15 @@ class ReviewService:
                     reviewer_user_id,
                     job.initial_document_status,
                 )
-                existing = self.session.scalar(select(MetadataChangeRequest).where(
-                    MetadataChangeRequest.metadata_revision_id == int(revision["id"])
-                ))
-                if existing is None:
-                    self.session.add(MetadataChangeRequest(
-                        document_id=job.document_id,
-                        metadata_revision_id=int(revision["id"]),
-                        job_id=job.id,
-                        request_type="INITIAL",
-                        created_by=reviewer_user_id,
-                    ))
+                with KnowledgeMetadataService(self.management.paths.database_path) as knowledge:
+                    MetadataApplicationService(
+                        self.session, knowledge, self.ingestion
+                    ).register_initial(
+                        job.document_id,
+                        int(revision["id"]),
+                        job.id,
+                        reviewer_user_id,
+                    )
             else:
                 if job.chunk_run_id is None:
                     raise ReviewConflictError("任务缺少ChunkRun ID")

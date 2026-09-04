@@ -12,46 +12,61 @@ from knowledge.management import KnowledgeManagementService
 from knowledge.metadata_service import KnowledgeMetadataService, MetadataConflictError
 from knowledge.indexing.config import EmbeddingContract, IndexConfig
 from knowledge.indexing.indexer import PolicyIndexer
+from knowledge.parser.database import ParserDatabase
 from knowledge.parser.review import ReviewService as ParseReviewService
+
+
+def _insert_reviewable_document(paths: KnowledgePaths, title: str, checksum: str) -> int:
+    """按正常建档路径建立带active ParseRun的最小制度。"""
+
+    with ParserDatabase(paths.database_path) as database:
+        document_id = database.get_or_create_document({
+            "source_file": f"pending/{checksum}.docx",
+            "file_name": f"{checksum}.docx",
+            "file_size": 100,
+            "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "checksum": checksum,
+        })
+        parse_run_id = database.create_parse_run(document_id, "test", f"parse-{checksum}")
+        database.update_run(parse_run_id, status="succeeded", review_status="approved")
+        database.update_document(
+            document_id,
+            title=title,
+            parser_status="succeeded",
+            review_status="passed",
+            latest_parse_run_id=parse_run_id,
+            active_parse_run_id=parse_run_id,
+        )
+        return document_id
 
 
 def test_metadata_revision_requires_explicit_status_confirmation() -> None:
     runtime_root = Path(os.environ["POLICY_TEST_RUNTIME_ROOT"]).resolve()
     paths = KnowledgePaths(runtime_root / uuid4().hex / "knowledge")
     KnowledgeManagementService(paths).initialize_empty_baseline()
-    now = "2026-08-31T00:00:00+00:00"
-    with sqlite3.connect(paths.database_path) as connection:
-        connection.execute(
-            """
-            INSERT INTO policy_document (
-                title, source_file, file_name, mime_type, file_size, parser_status,
-                review_status, checksum, created_at, updated_at
-            ) VALUES ('测试制度', 'pending/test.docx', 'test.docx',
-                      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                      100, 'succeeded', 'passed', 'v2-test-checksum', ?, ?)
-            """,
-            (now, now),
-        )
+    document_id = _insert_reviewable_document(paths, "测试制度", "v2-test-checksum")
 
     with KnowledgeMetadataService(paths.database_path) as service:
-        item = service.list_documents()[0]
-        revision_id = int(item["latest_metadata_revision_id"])
-        service.update_draft(1, revision_id, {
+        draft = service.ensure_draft(
+            document_id, "uploader", source_type="PARSE_EXTRACTED", initial_document_status="effective"
+        )
+        revision_id = int(draft["id"])
+        service.update_draft(document_id, revision_id, {
             "issuing_org": "测试发布机构",
             "owner_department": "测试责任部门",
             "publish_date": "2026-08-31",
             "status": "unknown",
         })
         with pytest.raises(MetadataConflictError, match="保留原因"):
-            service.submit(1, revision_id)
-        service.update_draft(1, revision_id, {
+            service.submit(document_id, revision_id)
+        service.update_draft(document_id, revision_id, {
             "status_confirmation_note": "原文件未明确效力状态，待业务部门确认",
         })
-        pending = service.submit(1, revision_id)
+        pending = service.submit(document_id, revision_id)
         assert pending["lifecycle_status"] == "PENDING_REVIEW"
-        approved = service.review(1, revision_id, True, "reviewer", "核对通过")
+        approved = service.review(document_id, revision_id, True, "reviewer", "核对通过")
         assert approved["lifecycle_status"] == "APPROVED"
-        assert service.detail(1)["document"]["approved_metadata_revision_id"] == revision_id
+        assert service.detail(document_id)["document"]["approved_metadata_revision_id"] == revision_id
 
 
 def test_initial_metadata_draft_uses_upload_declaration() -> None:
@@ -60,23 +75,11 @@ def test_initial_metadata_draft_uses_upload_declaration() -> None:
     runtime_root = Path(os.environ["POLICY_TEST_RUNTIME_ROOT"]).resolve()
     paths = KnowledgePaths(runtime_root / uuid4().hex / "knowledge")
     KnowledgeManagementService(paths).initialize_empty_baseline()
-    now = "2026-09-03T00:00:00+00:00"
-    with sqlite3.connect(paths.database_path) as connection:
-        connection.execute(
-            """
-            INSERT INTO policy_document (
-                title, source_file, file_name, mime_type, file_size, parser_status,
-                review_status, checksum, created_at, updated_at
-            ) VALUES ('历史制度', 'pending/history.docx', 'history.docx',
-                      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                      100, 'succeeded', 'passed', 'upload-status-test', ?, ?)
-            """,
-            (now, now),
-        )
+    document_id = _insert_reviewable_document(paths, "历史制度", "upload-status-test")
 
     with KnowledgeMetadataService(paths.database_path) as service:
         draft = service.ensure_draft(
-            1,
+            document_id,
             "uploader",
             source_type="PARSE_EXTRACTED",
             initial_document_status="repealed",
@@ -89,23 +92,17 @@ def test_policy_document_is_a_version_under_policy_series() -> None:
     runtime_root = Path(os.environ["POLICY_TEST_RUNTIME_ROOT"]).resolve()
     paths = KnowledgePaths(runtime_root / uuid4().hex / "knowledge")
     KnowledgeManagementService(paths).initialize_empty_baseline()
-    now = "2026-08-31T00:00:00+00:00"
-    with sqlite3.connect(paths.database_path) as connection:
-        for index in (1, 2):
-            connection.execute(
-                """
-                INSERT INTO policy_document (
-                    title, source_file, file_name, mime_type, file_size, parser_status,
-                    review_status, checksum, created_at, updated_at
-                ) VALUES (?, ?, ?, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                          100, 'succeeded', 'passed', ?, ?, ?)
-                """,
-                (f"测试制度第{index}版", f"pending/{index}.docx", f"{index}.docx", f"series-checksum-{index}", now, now),
-            )
+    first_document_id = _insert_reviewable_document(paths, "测试制度第1版", "series-checksum-1")
+    second_document_id = _insert_reviewable_document(paths, "测试制度第2版", "series-checksum-2")
 
     with KnowledgeMetadataService(paths.database_path) as service:
-        first_series = int(service.list_documents()[1]["series_id"])
-        second = service.assign_series(2, series_id=first_series, canonical_title="测试制度")
+        first_document = next(
+            item for item in service.list_documents() if int(item["id"]) == first_document_id
+        )
+        first_series = int(first_document["series_id"])
+        second = service.assign_series(
+            second_document_id, series_id=first_series, canonical_title="测试制度"
+        )
         assert second["series_id"] == first_series
         assert second["document_version_no"] == 2
         series = next(item for item in service.list_series() if item["id"] == first_series)

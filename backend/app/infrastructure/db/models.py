@@ -316,6 +316,31 @@ class IndexPublicationRequest(Base):
     __table_args__ = (Index("ix_index_publication_status", "status", "updated_at"),)
 
 
+class IndexPublicationSource(Base):
+    """冻结发布请求采用的制度、知识运行版本和可选入库任务。"""
+
+    __tablename__ = "index_publication_source"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_text)
+    publication_request_id: Mapped[str] = mapped_column(
+        ForeignKey("index_publication_request.id", ondelete="CASCADE"), nullable=False
+    )
+    job_id: Mapped[str | None] = mapped_column(
+        ForeignKey("ingestion_job.id", ondelete="RESTRICT")
+    )
+    document_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    parse_run_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_run_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    metadata_revision_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    index_run_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    __table_args__ = (
+        UniqueConstraint(
+            "publication_request_id", "document_id", name="uq_index_publication_source_document"
+        ),
+        Index("ix_index_publication_source_job", "job_id"),
+    )
+
+
 class IngestionJobEvent(Base):
     """不可变的任务状态转换记录。"""
     __tablename__ = "ingestion_job_event"

@@ -163,6 +163,21 @@ class KnowledgeMetadataService:
         """返回现有草稿，或从当前有效/最新元数据复制新修订。"""
 
         document = self._document(document_id)
+        active_parse_run_id = document.get("active_parse_run_id")
+        if active_parse_run_id is None:
+            raise MetadataConflictError("制度尚无已批准的active ParseRun，不能创建元数据草稿")
+        if source_type in {"MANUAL_CORRECTION", "REPEAL"} and not (
+            document.get("approved_metadata_revision_id")
+            or document.get("active_metadata_revision_id")
+        ):
+            raise MetadataConflictError("制度尚无已批准元数据，不能创建修订或登记废止")
+        if source_type == "REPEAL":
+            active_revision_id = document.get("active_metadata_revision_id")
+            if active_revision_id is None:
+                raise MetadataConflictError("制度尚未正式发布，不能登记废止")
+            active_revision = self._revision(int(active_revision_id))
+            if str(active_revision.get("status") or "").lower() != "effective":
+                raise MetadataConflictError("只有现行有效制度可以登记废止")
         latest_id = document.get("latest_metadata_revision_id")
         if latest_id:
             latest = self._revision(int(latest_id))
@@ -182,10 +197,11 @@ class KnowledgeMetadataService:
                         self.db.connection.execute(
                             """
                             UPDATE document_metadata_revision
-                            SET status=?, source_type=?, change_reason=?, content_hash=?, updated_at=?
+                            SET parse_run_id=?,status=?,source_type=?,change_reason=?,content_hash=?,updated_at=?
                             WHERE id=?
                             """,
                             (
+                                int(active_parse_run_id),
                                 initial_document_status,
                                 source_type,
                                 change_reason,
@@ -195,7 +211,18 @@ class KnowledgeMetadataService:
                             ),
                         )
                     return self._revision(int(latest_id))
-                return latest
+                same_initial = (
+                    initial_document_status is not None
+                    and latest.get("source_type") == "PARSE_EXTRACTED"
+                    and int(latest.get("parse_run_id") or 0) == int(active_parse_run_id)
+                )
+                if same_initial or (
+                    initial_document_status is None and latest.get("source_type") == source_type
+                ):
+                    return latest
+                raise MetadataConflictError(
+                    f"当前存在待处理的 {latest.get('source_type')} 草稿，不能创建 {source_type} 修订"
+                )
         base_id = document.get("approved_metadata_revision_id") or document.get("active_metadata_revision_id") or latest_id
         if base_id:
             base = self._revision(int(base_id))
@@ -214,7 +241,7 @@ class KnowledgeMetadataService:
             (document_id,),
         ).fetchone()[0])
         now = utc_now()
-        parse_run_id = document.get("active_parse_run_id")
+        parse_run_id = int(active_parse_run_id)
         content_hash = self._content_hash(values)
         with self.db.transaction():
             cursor = self.db.connection.execute(

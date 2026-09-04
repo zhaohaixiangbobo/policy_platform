@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   assignPolicySeries, confirmIndexPublication, createIndexPublication, createMetadataDraft,
   getManagedDocument, listIndexPublications, listManagedDocuments, listPolicySeries,
-  reviewMetadataRevision, submitMetadataRevision, updateMetadataRevision,
+  retryIndexPublication, reviewMetadataRevision, submitMetadataRevision, updateMetadataRevision,
 } from '../../api/admin';
 import type { IndexPublication, ManagedDocument, ManagedDocumentDetail, MetadataRevision, PolicySeries } from '../../api/admin';
 import { UiIcon } from '../../components/UiIcon';
@@ -123,6 +123,9 @@ export function KnowledgeGovernancePage() {
     catch (error) { message.error(error instanceof Error ? error.message : '创建发布请求失败'); }
   };
 
+  const canCreateRevision = current?.lifecycle_status === 'PUBLISHED' || current?.lifecycle_status === 'REJECTED';
+  const canRegisterRepeal = current?.lifecycle_status === 'PUBLISHED' && current?.status === 'effective';
+
   const columns = [
     { title: '正式文件版本', key: 'title', render: (_: unknown, row: ManagedDocument) => <div><strong>{row.title || row.file_name}</strong><div><Typography.Text type="secondary">Document {row.id} · 系列版本 {row.document_version_no}</Typography.Text></div></div> },
     { title: '文号', dataIndex: 'document_code', width: 180, render: (value: string | null) => value || '-' },
@@ -138,9 +141,9 @@ export function KnowledgeGovernancePage() {
     <Card variant="borderless" className="admin-table-card">
       <Table<ManagedDocument> rowKey="id" loading={loading} columns={columns} dataSource={documents} rowSelection={{ selectedRowKeys: selectedIds, onChange: setSelectedIds }} pagination={{ pageSize: 20 }} />
     </Card>
-    <Card title="索引发布生命周期" variant="borderless"><List dataSource={publications.slice(0, 8)} locale={{ emptyText: '尚无V2发布请求' }} renderItem={(item) => <List.Item actions={item.status === 'READY_TO_PUBLISH' ? [<Popconfirm key="publish" title="确认切换Alias并正式发布？" onConfirm={() => void confirmIndexPublication(item.id).then(() => { message.success('发布已排队'); return refresh(); }).catch((error) => message.error(error.message))}><Button type="primary" size="small">确认发布</Button></Popconfirm>] : undefined}><Space><Tag color={item.status === 'PUBLISHED' ? 'green' : item.status === 'FAILED' ? 'red' : 'blue'}>{publicationLabels[item.status] ?? item.status}</Tag><Typography.Text>制度 {item.document_ids.join('、')} · IndexRun {item.index_run_id ?? '待生成'}</Typography.Text>{item.error_summary && <Typography.Text type="danger">{item.error_summary}</Typography.Text>}</Space></List.Item>} /></Card>
+    <Card title="索引发布生命周期" variant="borderless"><List dataSource={publications.slice(0, 8)} locale={{ emptyText: '尚无V2发布请求' }} renderItem={(item) => <List.Item actions={item.status === 'READY_TO_PUBLISH' ? [<Popconfirm key="publish" title="确认切换Alias并正式发布？" onConfirm={() => void confirmIndexPublication(item.id).then(() => { message.success('发布已排队'); return refresh(); }).catch((error) => message.error(error.message))}><Button type="primary" size="small">确认发布</Button></Popconfirm>] : item.status === 'FAILED' && item.can_retry ? [<Popconfirm key="retry" title="按原发布请求重试？" onConfirm={() => void retryIndexPublication(item.id).then(() => { message.success('发布请求已重新排队'); return refresh(); }).catch((error) => message.error(error.message))}><Button size="small">重试原请求</Button></Popconfirm>] : undefined}><Space><Tag color={item.status === 'PUBLISHED' ? 'green' : item.status === 'FAILED' ? 'red' : 'blue'}>{publicationLabels[item.status] ?? item.status}</Tag><Typography.Text>制度 {item.document_ids.join('、')} · IndexRun {item.index_run_id ?? '待生成'}</Typography.Text>{item.status === 'FAILED' && !item.can_retry && <Tag>历史记录，仅供审计</Tag>}{item.error_summary && <Typography.Text type="danger">{item.error_summary}</Typography.Text>}</Space></List.Item>} /></Card>
 
-    <Drawer width={980} title="制度元数据治理" open={Boolean(detail)} onClose={() => setDetail(null)} extra={<Space><Button icon={<UiIcon icon={LinkOutlined} />} onClick={() => { seriesForm.setFieldsValue({ series_id: Number(detail?.document.series_id) }); setSeriesOpen(true); }}>制度系列</Button>{current?.lifecycle_status !== 'DRAFT' && <Button icon={<UiIcon icon={EditOutlined} />} onClick={() => void createDraft('CORRECTION')}>新建修订</Button>}<Button danger icon={<UiIcon icon={StopOutlined} />} onClick={() => void createDraft('REPEAL')}>登记废止</Button></Space>}>
+    <Drawer width={980} title="制度元数据治理" open={Boolean(detail)} onClose={() => setDetail(null)} extra={<Space><Button icon={<UiIcon icon={LinkOutlined} />} onClick={() => { seriesForm.setFieldsValue({ series_id: Number(detail?.document.series_id) }); setSeriesOpen(true); }}>制度系列</Button>{canCreateRevision && <Button icon={<UiIcon icon={EditOutlined} />} onClick={() => void createDraft('CORRECTION')}>新建修订</Button>}{canRegisterRepeal && <Button danger icon={<UiIcon icon={StopOutlined} />} onClick={() => void createDraft('REPEAL')}>登记废止</Button>}</Space>}>
       {detail && current && <div className="metadata-workbench">
         <section><Card size="small" title={`修订 ${current.revision_no} · ${lifecycleLabels[current.lifecycle_status] ?? current.lifecycle_status}`}>
           <Form form={form} layout="vertical" disabled={current.lifecycle_status !== 'DRAFT'}>
