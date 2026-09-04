@@ -1,0 +1,11 @@
+# 文件说明：配置后端项目元数据和最小pytest行为。
+[project]
+name = "policy-platform-backend"
+version = "0.1.0"
+description = "制度知识智能服务平台Platform API"
+requires-python = ">=3.12,<3.13"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:cacheprovider"
+pythonpath = ["."]

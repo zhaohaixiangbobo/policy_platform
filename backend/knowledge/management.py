@@ -1,0 +1,201 @@
+"""文件说明：封装空知识基线和受控导入流水线的唯一管理服务边界。"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Any, Callable
+
+from knowledge.config import KnowledgePaths
+from knowledge.indexing.config import EmbeddingContract, IndexConfig
+from knowledge.indexing.database import IndexDatabase
+from knowledge.indexing.embedding import OpenAIEmbeddingClient
+from knowledge.indexing.indexer import PolicyIndexer
+from knowledge.indexing.qdrant_store import QdrantVectorStore
+from knowledge.parser.database import ParserDatabase
+from knowledge.parser.pipeline import ParserConfig, PolicyParserPipeline
+from knowledge.parser.review import ReviewService as ParseReviewService
+from knowledge.metadata_service import KnowledgeMetadataService
+from knowledge.parse_correction import ParseCorrectionService
+from knowledge.chunking.chunker import ChunkerConfig, PolicyChunker
+from knowledge.chunking.review import ChunkReviewService
+
+
+class KnowledgeManagementService:
+    """供CLI和单Worker复用，API路由不得直接操作知识SQLite或Qdrant。"""
+
+    def __init__(self, paths: KnowledgePaths, progress: Callable[[str], None] | None = None) -> None:
+        self.paths = paths
+        self.progress = progress or (lambda _message: None)
+
+    def initialize_empty_baseline(self) -> dict[str, Any]:
+        """幂等创建空知识表、受控目录和Platform独立索引配置。"""
+
+        directories = (
+            self.paths.source_documents,
+            self.paths.accepted_documents,
+            self.paths.pdf_documents,
+            self.paths.pending_documents,
+            self.paths.temp_directory,
+        )
+        for directory in directories:
+            directory.mkdir(parents=True, exist_ok=True)
+        parser_database = ParserDatabase(self.paths.database_path)
+        parser_database.close()
+        config = IndexConfig()
+        with IndexDatabase(self.paths.database_path) as index_database:
+            profile = index_database.get_or_create_profile(config.profile_name, config.alias_name)
+        return {
+            "database_path": str(self.paths.database_path),
+            "profile_name": profile["profile_name"],
+            "alias_name": profile["alias_name"],
+            "active_index_run_id": profile["active_index_run_id"],
+        }
+
+    def parse_pending_document(self, source: Path) -> dict[str, Any]:
+        """创建不自动激活的ParseRun；审核通过前正式active指针保持不变。"""
+
+        controlled_source = source.resolve()
+        if not controlled_source.is_relative_to(self.paths.pending_documents.resolve()):
+            raise ValueError("待解析文件不在受控pending目录")
+        with PolicyParserPipeline(
+            self.paths.database_path,
+            self.paths.data_root,
+            ParserConfig(
+                render_pdf=True,
+                render_engine=os.getenv("POLICY_DOCX_RENDER_ENGINE", "auto_headless"),
+                libreoffice_path=os.getenv("POLICY_LIBREOFFICE_PATH"),
+                auto_activate=False,
+            ),
+            progress=self.progress,
+        ) as pipeline:
+            return pipeline.parse(controlled_source)
+
+    def approve_parse_run(self, run_id: int, reviewer_user_id: str, comment: str | None) -> dict[str, Any]:
+        """批准ParseRun并由知识模块原子切换active ParseRun。"""
+
+        with ParseReviewService(self.paths.database_path) as service:
+            return service.approve_run(run_id, reviewer_user_id, comment)
+
+    def decide_parse_item(self, run_id: int, target_type: str, target_id: int, action: str, reviewer_user_id: str, comment: str | None, corrected_value: str | None = None) -> dict[str, Any]:
+        """确认、忽略、驳回或更正单个ParseRun审核对象。"""
+
+        with ParseReviewService(self.paths.database_path) as service:
+            return service.decide(run_id=run_id, target_type=target_type, target_id=target_id, action=action, reviewed_by=reviewer_user_id, comment=comment, corrected_value=corrected_value)
+
+    def ensure_metadata_draft(
+        self,
+        document_id: int,
+        actor_user_id: str,
+        initial_document_status: str = "effective",
+    ) -> dict[str, Any]:
+        """ParseRun通过后建立独立元数据草稿，等待专门页面确认。"""
+
+        with KnowledgeMetadataService(self.paths.database_path) as service:
+            return service.ensure_draft(
+                document_id,
+                actor_user_id,
+                source_type="PARSE_EXTRACTED",
+                change_reason="ParseRun结构审核通过后确认制度元数据；制度状态采用上传声明值",
+                initial_document_status=initial_document_status,
+            )
+
+    def create_parse_correction(
+        self,
+        source_run_id: int,
+        source_node_id: int,
+        changes: dict[str, Any],
+        actor_user_id: str,
+    ) -> dict[str, Any]:
+        """创建不覆盖历史的MANUAL_CORRECTION派生ParseRun。"""
+
+        with ParseCorrectionService(self.paths.database_path) as service:
+            return service.create(source_run_id, source_node_id, changes, actor_user_id)
+
+    def build_chunk_run(self, document_id: int) -> dict[str, Any]:
+        """基于已审核active ParseRun创建不自动激活的ChunkRun。"""
+
+        with PolicyChunker(self.paths.database_path, ChunkerConfig()) as chunker:
+            return chunker.run_document(document_id, activate=False)
+
+    def approve_chunk_run(self, run_id: int, reviewer_user_id: str, comment: str | None) -> dict[str, Any]:
+        """批准ChunkRun并由知识模块原子切换active ChunkRun。"""
+
+        with ChunkReviewService(self.paths.database_path) as service:
+            return service.approve_run(run_id, reviewer_user_id, comment)
+
+    def decide_chunk_item(self, run_id: int, target_type: str, target_id: int, action: str, reviewer_user_id: str, comment: str | None) -> dict[str, Any]:
+        """确认、忽略或驳回单个ChunkRun审核对象。"""
+
+        with ChunkReviewService(self.paths.database_path) as service:
+            return service.decide(chunk_run_id=run_id, target_type=target_type, target_id=target_id, action=action, reviewed_by=reviewer_user_id, comment=comment)
+
+    def reject_chunk_run(self, run_id: int, reviewer_user_id: str, comment: str | None) -> dict[str, Any]:
+        """在知识库保留可审计的ChunkRun驳回结果。"""
+
+        with ChunkReviewService(self.paths.database_path) as service:
+            return service.reject_run(run_id, reviewer_user_id, comment)
+
+    def build_index_run(self, required_document_ids: list[int] | None = None) -> dict[str, Any]:
+        """构建并核验IndexRun，不切换alias，等待管理员发布。"""
+
+        endpoint = os.getenv("POLICY_EMBEDDING_URL", "http://10.9.7.1:8001/v1/embeddings")
+        contract = EmbeddingContract(
+            model=os.getenv("POLICY_EMBEDDING_MODEL", "qwen3-embedding-4b"),
+            model_revision=os.getenv("POLICY_EMBEDDING_REVISION", "deployment-unreported"),
+            dimension=int(os.getenv("POLICY_EMBEDDING_DIMENSION", "2560")),
+        )
+        config = IndexConfig()
+        embedding = OpenAIEmbeddingClient(
+            endpoint,
+            contract,
+            api_key=os.getenv("POLICY_EMBEDDING_API_KEY"),
+            timeout_seconds=config.request_timeout_seconds,
+            max_retries=config.max_retries,
+        )
+        store = QdrantVectorStore(
+            os.getenv("POLICY_QDRANT_URL", "http://127.0.0.1:6333"),
+            api_key=os.getenv("POLICY_QDRANT_API_KEY"),
+            timeout_seconds=config.request_timeout_seconds,
+        )
+        with PolicyIndexer(
+            self.paths.database_path,
+            embedding_client=embedding,
+            vector_store=store,
+            contract=contract,
+            config=config,
+        ) as indexer:
+            return indexer.build(
+                activate=False,
+                required_document_ids=required_document_ids,
+            )
+
+    def publish_index_run(self, run_id: int) -> dict[str, Any]:
+        """管理员确认后原子切换Platform独立alias和active IndexRun。"""
+
+        contract = EmbeddingContract(
+            model=os.getenv("POLICY_EMBEDDING_MODEL", "qwen3-embedding-4b"),
+            model_revision=os.getenv("POLICY_EMBEDDING_REVISION", "deployment-unreported"),
+            dimension=int(os.getenv("POLICY_EMBEDDING_DIMENSION", "2560")),
+        )
+        config = IndexConfig()
+        embedding = OpenAIEmbeddingClient(
+            os.getenv("POLICY_EMBEDDING_URL", "http://10.9.7.1:8001/v1/embeddings"),
+            contract,
+            api_key=os.getenv("POLICY_EMBEDDING_API_KEY"),
+            timeout_seconds=config.request_timeout_seconds,
+            max_retries=config.max_retries,
+        )
+        store = QdrantVectorStore(
+            os.getenv("POLICY_QDRANT_URL", "http://127.0.0.1:6333"),
+            api_key=os.getenv("POLICY_QDRANT_API_KEY"),
+            timeout_seconds=config.request_timeout_seconds,
+        )
+        with PolicyIndexer(
+            self.paths.database_path,
+            embedding_client=embedding,
+            vector_store=store,
+            contract=contract,
+            config=config,
+        ) as indexer:
+            return indexer.activate(run_id)

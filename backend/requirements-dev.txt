@@ -1,0 +1,4 @@
+# 文件说明：统一后端最小测试所需依赖，不包含压力或全量评测工具。
+-r requirements.txt
+pytest==9.1.1
+pytest-asyncio==1.4.0

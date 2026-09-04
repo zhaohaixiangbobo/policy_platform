@@ -1,0 +1,5 @@
+# 文件说明：声明平台前端为当前仓库唯一的 Node 工作区包。
+packages:
+  - frontend
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,12 @@
+{
+  "name": "policy-platform",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.22.0",
+  "scripts": {
+    "dev": "pnpm --filter @policy-platform/frontend dev",
+    "build": "pnpm --filter @policy-platform/frontend build",
+    "typecheck": "pnpm --filter @policy-platform/frontend typecheck",
+    "preview": "pnpm --filter @policy-platform/frontend preview"
+  }
+}

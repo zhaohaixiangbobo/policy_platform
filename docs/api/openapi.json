@@ -1,0 +1,6130 @@
+{
+  "components": {
+    "schemas": {
+      "AuthProviderSummary": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "type",
+          "enabled",
+          "ready"
+        ],
+        "title": "AuthProviderSummary",
+        "type": "object"
+      },
+      "BatchCreateRequest": {
+        "properties": {
+          "name": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "BatchCreateRequest",
+        "type": "object"
+      },
+      "Body_create_job_api_v1_admin_jobs_post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "initial_document_status": {
+            "default": "effective",
+            "enum": [
+              "effective",
+              "repealed",
+              "expired"
+            ],
+            "title": "Initial Document Status",
+            "type": "string"
+          },
+          "task_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Name"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_create_job_api_v1_admin_jobs_post",
+        "type": "object"
+      },
+      "Body_create_rework_job_api_v1_admin_jobs__job_id__rework_post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "initial_document_status": {
+            "default": "effective",
+            "enum": [
+              "effective",
+              "repealed",
+              "expired"
+            ],
+            "title": "Initial Document Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_create_rework_job_api_v1_admin_jobs__job_id__rework_post",
+        "type": "object"
+      },
+      "Body_upload_batch_job_api_v1_admin_batches__batch_id__jobs_post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "initial_document_status": {
+            "default": "effective",
+            "enum": [
+              "effective",
+              "repealed",
+              "expired"
+            ],
+            "title": "Initial Document Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_batch_job_api_v1_admin_batches__batch_id__jobs_post",
+        "type": "object"
+      },
+      "ChangePasswordRequest": {
+        "properties": {
+          "current_password": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "maxLength": 200,
+            "minLength": 10,
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "ChangePasswordRequest",
+        "type": "object"
+      },
+      "ChatMessageCreate": {
+        "properties": {
+          "content": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "query_scope": {
+            "default": "CURRENT",
+            "enum": [
+              "CURRENT",
+              "HISTORICAL"
+            ],
+            "title": "Query Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "ChatMessageCreate",
+        "type": "object"
+      },
+      "ChatMessageListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessageResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ChatMessageListResponse",
+        "type": "object"
+      },
+      "ChatMessageResponse": {
+        "properties": {
+          "answer_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ANSWER",
+                  "INSUFFICIENT_EVIDENCE",
+                  "CONFLICT"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Status"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationSnapshot"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictSnapshot"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "contract_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Version"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "engine_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine Request Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "index_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Run Id"
+          },
+          "quality_gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QualityGateSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "query_scope": {
+            "enum": [
+              "CURRENT",
+              "HISTORICAL"
+            ],
+            "title": "Query Scope",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "session_id",
+          "role",
+          "query_scope",
+          "content",
+          "answer_status",
+          "request_id",
+          "engine_request_id",
+          "contract_version",
+          "index_run_id",
+          "quality_gate",
+          "citations",
+          "conflicts",
+          "created_at"
+        ],
+        "title": "ChatMessageResponse",
+        "type": "object"
+      },
+      "ChatSessionCreate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "ChatSessionCreate",
+        "type": "object"
+      },
+      "ChatSessionSummary": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChatSessionSummary",
+        "type": "object"
+      },
+      "ChatSessionUpdate": {
+        "properties": {
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "ChatSessionUpdate",
+        "type": "object"
+      },
+      "ChatTurnResponse": {
+        "properties": {
+          "assistant_message": {
+            "$ref": "#/components/schemas/ChatMessageResponse"
+          },
+          "user_message": {
+            "$ref": "#/components/schemas/ChatMessageResponse"
+          }
+        },
+        "required": [
+          "user_message",
+          "assistant_message"
+        ],
+        "title": "ChatTurnResponse",
+        "type": "object"
+      },
+      "CitationSnapshot": {
+        "properties": {
+          "chunk_id": {
+            "title": "Chunk Id",
+            "type": "integer"
+          },
+          "chunk_run_id": {
+            "title": "Chunk Run Id",
+            "type": "integer"
+          },
+          "citation_version": {
+            "title": "Citation Version",
+            "type": "string"
+          },
+          "document_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Code"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "document_status": {
+            "title": "Document Status",
+            "type": "string"
+          },
+          "document_title": {
+            "title": "Document Title",
+            "type": "string"
+          },
+          "evidence_uid": {
+            "title": "Evidence Uid",
+            "type": "string"
+          },
+          "evidence_uid_version": {
+            "title": "Evidence Uid Version",
+            "type": "string"
+          },
+          "index_run_id": {
+            "title": "Index Run Id",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "page_end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page End"
+          },
+          "page_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Start"
+          },
+          "parse_run_id": {
+            "title": "Parse Run Id",
+            "type": "integer"
+          },
+          "path_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path Text"
+          },
+          "primary_node_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Node Id"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "snapshot_hash": {
+            "title": "Snapshot Hash",
+            "type": "string"
+          },
+          "source_reference": {
+            "title": "Source Reference",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "citation_version",
+          "evidence_uid_version",
+          "label",
+          "evidence_uid",
+          "document_id",
+          "primary_node_id",
+          "parse_run_id",
+          "chunk_run_id",
+          "index_run_id",
+          "chunk_id",
+          "document_title",
+          "document_code",
+          "document_status",
+          "source_reference",
+          "path_text",
+          "page_start",
+          "page_end",
+          "quote",
+          "truncated",
+          "snapshot_hash"
+        ],
+        "title": "CitationSnapshot",
+        "type": "object"
+      },
+      "ComponentHealth": {
+        "additionalProperties": false,
+        "description": "单个内部依赖的公开可用状态。",
+        "properties": {
+          "status": {
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ComponentHealth",
+        "type": "object"
+      },
+      "ConflictPositionSnapshot": {
+        "properties": {
+          "citations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement",
+          "citations"
+        ],
+        "title": "ConflictPositionSnapshot",
+        "type": "object"
+      },
+      "ConflictSnapshot": {
+        "properties": {
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictPositionSnapshot"
+            },
+            "title": "Positions",
+            "type": "array"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "positions"
+        ],
+        "title": "ConflictSnapshot",
+        "type": "object"
+      },
+      "CurrentUserResponse": {
+        "properties": {
+          "auth_provider": {
+            "title": "Auth Provider",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "must_change_password": {
+            "title": "Must Change Password",
+            "type": "boolean"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "roles",
+          "permissions",
+          "must_change_password",
+          "auth_provider"
+        ],
+        "title": "CurrentUserResponse",
+        "type": "object"
+      },
+      "DiagnosticListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticRequestSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "DiagnosticListResponse",
+        "type": "object"
+      },
+      "DiagnosticRequestDetail": {
+        "properties": {
+          "answer": {
+            "$ref": "#/components/schemas/ChatMessageResponse"
+          },
+          "context_config_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Config Hash"
+          },
+          "diagnostic_scope": {
+            "default": "public_response_snapshot_only",
+            "title": "Diagnostic Scope",
+            "type": "string"
+          },
+          "generator_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generator Model"
+          },
+          "generator_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generator Revision"
+          },
+          "latency_total_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Total Ms"
+          },
+          "prompt_schema_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Schema Version"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version"
+          },
+          "question": {
+            "$ref": "#/components/schemas/ChatMessageResponse"
+          },
+          "rag_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rag Version"
+          },
+          "retrieval_config_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Config Hash"
+          }
+        },
+        "required": [
+          "question",
+          "answer",
+          "rag_version",
+          "generator_model",
+          "generator_revision",
+          "prompt_version",
+          "prompt_schema_version",
+          "retrieval_config_hash",
+          "context_config_hash",
+          "latency_total_ms"
+        ],
+        "title": "DiagnosticRequestDetail",
+        "type": "object"
+      },
+      "DiagnosticRequestSummary": {
+        "properties": {
+          "answer_status": {
+            "title": "Answer Status",
+            "type": "string"
+          },
+          "citation_count": {
+            "title": "Citation Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "has_down_feedback": {
+            "title": "Has Down Feedback",
+            "type": "boolean"
+          },
+          "index_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Run Id"
+          },
+          "latency_total_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Total Ms"
+          },
+          "quality_gate_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Gate Status"
+          },
+          "quality_gate_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Gate Version"
+          },
+          "question_summary": {
+            "title": "Question Summary",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "question_summary",
+          "answer_status",
+          "quality_gate_version",
+          "quality_gate_status",
+          "citation_count",
+          "index_run_id",
+          "latency_total_ms",
+          "has_down_feedback",
+          "created_at"
+        ],
+        "title": "DiagnosticRequestSummary",
+        "type": "object"
+      },
+      "DocumentDetail": {
+        "description": "active制度详情；详细字段与列表摘要保持一致。",
+        "properties": {
+          "active_parse_run_id": {
+            "title": "Active Parse Run Id",
+            "type": "integer"
+          },
+          "document_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Code"
+          },
+          "effective_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Date"
+          },
+          "has_pdf": {
+            "title": "Has Pdf",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer"
+          },
+          "publish_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish Date"
+          },
+          "responsibility_department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responsibility Department"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "document_code",
+          "issuer",
+          "responsibility_department",
+          "status",
+          "publish_date",
+          "effective_date",
+          "active_parse_run_id",
+          "has_pdf",
+          "updated_at"
+        ],
+        "title": "DocumentDetail",
+        "type": "object"
+      },
+      "DocumentFacetsResponse": {
+        "description": "制度列表真实可用的筛选候选值。",
+        "properties": {
+          "departments": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Departments",
+            "type": "array"
+          },
+          "issuers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Issuers",
+            "type": "array"
+          },
+          "statuses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Statuses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "statuses",
+          "issuers",
+          "departments"
+        ],
+        "title": "DocumentFacetsResponse",
+        "type": "object"
+      },
+      "DocumentListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "DocumentListResponse",
+        "type": "object"
+      },
+      "DocumentNode": {
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "node_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Number"
+          },
+          "node_type": {
+            "title": "Node Type",
+            "type": "string"
+          },
+          "order_no": {
+            "title": "Order No",
+            "type": "integer"
+          },
+          "page_end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page End"
+          },
+          "page_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Start"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "parse_run_id": {
+            "title": "Parse Run Id",
+            "type": "integer"
+          },
+          "path_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path Text"
+          },
+          "table_structure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentTableStructure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "id",
+          "document_id",
+          "parse_run_id",
+          "parent_id",
+          "node_type",
+          "node_number",
+          "title",
+          "text",
+          "path_text",
+          "order_no",
+          "page_start",
+          "page_end"
+        ],
+        "title": "DocumentNode",
+        "type": "object"
+      },
+      "DocumentNodeListResponse": {
+        "properties": {
+          "active_parse_run_id": {
+            "title": "Active Parse Run Id",
+            "type": "integer"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentNode"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "document_id",
+          "active_parse_run_id",
+          "items"
+        ],
+        "title": "DocumentNodeListResponse",
+        "type": "object"
+      },
+      "DocumentSummary": {
+        "properties": {
+          "active_parse_run_id": {
+            "title": "Active Parse Run Id",
+            "type": "integer"
+          },
+          "document_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Code"
+          },
+          "effective_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Date"
+          },
+          "has_pdf": {
+            "title": "Has Pdf",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer"
+          },
+          "publish_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish Date"
+          },
+          "responsibility_department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responsibility Department"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "document_code",
+          "issuer",
+          "responsibility_department",
+          "status",
+          "publish_date",
+          "effective_date",
+          "active_parse_run_id",
+          "has_pdf",
+          "updated_at"
+        ],
+        "title": "DocumentSummary",
+        "type": "object"
+      },
+      "DocumentTableCell": {
+        "description": "Parser 从 OOXML 保存的真实表格单元格结构。",
+        "properties": {
+          "column": {
+            "minimum": 0.0,
+            "title": "Column",
+            "type": "integer"
+          },
+          "grid_span": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Grid Span",
+            "type": "integer"
+          },
+          "row": {
+            "minimum": 0.0,
+            "title": "Row",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "vertical_merge": {
+            "anyOf": [
+              {
+                "enum": [
+                  "restart",
+                  "continue"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vertical Merge"
+          }
+        },
+        "required": [
+          "row",
+          "column",
+          "text"
+        ],
+        "title": "DocumentTableCell",
+        "type": "object"
+      },
+      "DocumentTableStructure": {
+        "description": "Reading View 使用的表格行列与合并信息。",
+        "properties": {
+          "cell_count": {
+            "minimum": 0.0,
+            "title": "Cell Count",
+            "type": "integer"
+          },
+          "row_count": {
+            "minimum": 0.0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/DocumentTableCell"
+              },
+              "type": "array"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows",
+          "row_count",
+          "cell_count"
+        ],
+        "title": "DocumentTableStructure",
+        "type": "object"
+      },
+      "EvidenceBindRequest": {
+        "properties": {
+          "cell_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Cell Id",
+            "type": "string"
+          },
+          "document_id": {
+            "minimum": 1.0,
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "owner_kind": {
+            "enum": [
+              "NODE",
+              "EDGE",
+              "RELATION"
+            ],
+            "title": "Owner Kind",
+            "type": "string"
+          },
+          "page_end": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page End"
+          },
+          "page_start": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Start"
+          },
+          "parse_run_id": {
+            "minimum": 1.0,
+            "title": "Parse Run Id",
+            "type": "integer"
+          },
+          "primary_node_id": {
+            "minimum": 1.0,
+            "title": "Primary Node Id",
+            "type": "integer"
+          },
+          "quote_snapshot": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Quote Snapshot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner_kind",
+          "cell_id",
+          "document_id",
+          "parse_run_id",
+          "primary_node_id",
+          "quote_snapshot"
+        ],
+        "title": "EvidenceBindRequest",
+        "type": "object"
+      },
+      "EvidenceReferenceResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "owner_id": {
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "owner_type": {
+            "title": "Owner Type",
+            "type": "string"
+          },
+          "page_end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page End"
+          },
+          "page_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Start"
+          },
+          "parse_run_id": {
+            "title": "Parse Run Id",
+            "type": "integer"
+          },
+          "primary_node_id": {
+            "title": "Primary Node Id",
+            "type": "integer"
+          },
+          "quote_snapshot": {
+            "title": "Quote Snapshot",
+            "type": "string"
+          },
+          "snapshot_hash": {
+            "title": "Snapshot Hash",
+            "type": "string"
+          },
+          "validated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated At"
+          },
+          "validation_status": {
+            "title": "Validation Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "owner_type",
+          "owner_id",
+          "document_id",
+          "parse_run_id",
+          "primary_node_id",
+          "page_start",
+          "page_end",
+          "quote_snapshot",
+          "snapshot_hash",
+          "validation_status",
+          "validated_at",
+          "created_by",
+          "created_at"
+        ],
+        "title": "EvidenceReferenceResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "description": "live和ready端点共用的最小响应契约。",
+        "properties": {
+          "components": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/ComponentHealth"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Components"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "service": {
+            "title": "Service",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "not_ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "service",
+          "version",
+          "request_id"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "IndexPublicationCreateRequest": {
+        "properties": {
+          "document_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Document Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "document_ids"
+        ],
+        "title": "IndexPublicationCreateRequest",
+        "type": "object"
+      },
+      "IndexStatusResponse": {
+        "properties": {
+          "profile": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
+          "runs": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "profile",
+          "runs"
+        ],
+        "title": "IndexStatusResponse",
+        "type": "object"
+      },
+      "IngestionJobResponse": {
+        "properties": {
+          "attempt_no": {
+            "title": "Attempt No",
+            "type": "integer"
+          },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
+          "chunk_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Run Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "failed_stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Stage"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "index_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Run Id"
+          },
+          "initial_document_status": {
+            "enum": [
+              "effective",
+              "repealed",
+              "expired"
+            ],
+            "title": "Initial Document Status",
+            "type": "string"
+          },
+          "original_filename": {
+            "title": "Original Filename",
+            "type": "string"
+          },
+          "parse_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parse Run Id"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "rework_of_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rework Of Job Id"
+          },
+          "stage_progress": {
+            "title": "Stage Progress",
+            "type": "integer"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "state_version": {
+            "title": "State Version",
+            "type": "integer"
+          },
+          "task_name": {
+            "title": "Task Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "task_name",
+          "original_filename",
+          "initial_document_status",
+          "state",
+          "state_version",
+          "stage_progress",
+          "attempt_no",
+          "retryable",
+          "failed_stage",
+          "error_code",
+          "document_id",
+          "parse_run_id",
+          "chunk_run_id",
+          "index_run_id",
+          "batch_id",
+          "rework_of_job_id",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "IngestionJobResponse",
+        "type": "object"
+      },
+      "JobListResponse": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionJobResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "counts"
+        ],
+        "title": "JobListResponse",
+        "type": "object"
+      },
+      "JobPublishRequest": {
+        "properties": {
+          "expected_state_version": {
+            "minimum": 1.0,
+            "title": "Expected State Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_state_version"
+        ],
+        "title": "JobPublishRequest",
+        "type": "object"
+      },
+      "JobRetryRequest": {
+        "properties": {
+          "expected_state_version": {
+            "minimum": 1.0,
+            "title": "Expected State Version",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_state_version",
+          "reason"
+        ],
+        "title": "JobRetryRequest",
+        "type": "object"
+      },
+      "LoginRequest": {
+        "properties": {
+          "password": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "LoginResponse": {
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/CurrentUserResponse"
+          }
+        },
+        "required": [
+          "user",
+          "expires_at"
+        ],
+        "title": "LoginResponse",
+        "type": "object"
+      },
+      "MessageFeedbackCreate": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "mark_as_eval_case": {
+            "default": false,
+            "title": "Mark As Eval Case",
+            "type": "boolean"
+          },
+          "rating": {
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Rating",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "enum": [
+                "retrieval_miss",
+                "citation_mismatch",
+                "answer_wrong_with_valid_citation",
+                "answer_incomplete",
+                "inactive_document_used",
+                "query_misunderstood",
+                "conflict_mishandled",
+                "other"
+              ],
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rating"
+        ],
+        "title": "MessageFeedbackCreate",
+        "type": "object"
+      },
+      "MessageFeedbackResponse": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "eval_candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eval Candidate Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mark_as_eval_case": {
+            "title": "Mark As Eval Case",
+            "type": "boolean"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "rating": {
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Rating",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "message_id",
+          "rating",
+          "reason_codes",
+          "comment",
+          "mark_as_eval_case",
+          "eval_candidate_id",
+          "created_at"
+        ],
+        "title": "MessageFeedbackResponse",
+        "type": "object"
+      },
+      "MetadataDraftCreateRequest": {
+        "properties": {
+          "change_reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Reason"
+          },
+          "request_type": {
+            "enum": [
+              "CORRECTION",
+              "REPEAL"
+            ],
+            "title": "Request Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_type"
+        ],
+        "title": "MetadataDraftCreateRequest",
+        "type": "object"
+      },
+      "MetadataReviewRequest": {
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "boolean"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "required": [
+          "approved"
+        ],
+        "title": "MetadataReviewRequest",
+        "type": "object"
+      },
+      "MetadataRevisionUpdateRequest": {
+        "properties": {
+          "addressee_text": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Addressee Text"
+          },
+          "authority_level": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authority Level"
+          },
+          "change_reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Reason"
+          },
+          "confidentiality_level": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidentiality Level"
+          },
+          "document_code": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Code"
+          },
+          "document_type": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type"
+          },
+          "effective_date": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Date"
+          },
+          "expiry_date": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry Date"
+          },
+          "issuing_org": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuing Org"
+          },
+          "owner_department": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Department"
+          },
+          "publish_date": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish Date"
+          },
+          "repeal_date": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repeal Date"
+          },
+          "repeal_evidence": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repeal Evidence"
+          },
+          "repeal_reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repeal Reason"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "status_confirmation_note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Confirmation Note"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "title": "MetadataRevisionUpdateRequest",
+        "type": "object"
+      },
+      "ParseNodeCorrectionRequest": {
+        "properties": {
+          "node_number": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Number"
+          },
+          "node_type": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Type"
+          },
+          "order_no": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order No"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "source_node_id": {
+            "minimum": 1.0,
+            "title": "Source Node Id",
+            "type": "integer"
+          },
+          "source_parse_run_id": {
+            "minimum": 1.0,
+            "title": "Source Parse Run Id",
+            "type": "integer"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "source_parse_run_id",
+          "source_node_id"
+        ],
+        "title": "ParseNodeCorrectionRequest",
+        "type": "object"
+      },
+      "PolicySeriesAssignRequest": {
+        "properties": {
+          "canonical_title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Title"
+          },
+          "series_id": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Id"
+          }
+        },
+        "title": "PolicySeriesAssignRequest",
+        "type": "object"
+      },
+      "ProcessCreateRequest": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ProcessCreateRequest",
+        "type": "object"
+      },
+      "ProcessGraphUpdateRequest": {
+        "properties": {
+          "change_summary": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Summary"
+          },
+          "graph": {
+            "title": "Graph",
+            "type": "object"
+          }
+        },
+        "required": [
+          "graph"
+        ],
+        "title": "ProcessGraphUpdateRequest",
+        "type": "object"
+      },
+      "ProcessReviewerRequest": {
+        "properties": {
+          "user_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "ProcessReviewerRequest",
+        "type": "object"
+      },
+      "ProcessSummary": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "graph": {
+            "title": "Graph",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revision_id": {
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "revision_no": {
+            "title": "Revision No",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "revision_id",
+          "revision_no",
+          "status",
+          "graph",
+          "updated_at"
+        ],
+        "title": "ProcessSummary",
+        "type": "object"
+      },
+      "QualityGateSummary": {
+        "properties": {
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "semantic_verification": {
+            "title": "Semantic Verification",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "status",
+          "semantic_verification",
+          "reason_codes"
+        ],
+        "title": "QualityGateSummary",
+        "type": "object"
+      },
+      "RelationCreateRequest": {
+        "properties": {
+          "rationale": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "relation_type": {
+            "enum": [
+              "CITES",
+              "SUPERSEDES",
+              "REPEALS",
+              "RELATED_TOPIC",
+              "CONFLICTS_WITH"
+            ],
+            "title": "Relation Type",
+            "type": "string"
+          },
+          "source_document_id": {
+            "minimum": 1.0,
+            "title": "Source Document Id",
+            "type": "integer"
+          },
+          "source_parse_run_id": {
+            "minimum": 1.0,
+            "title": "Source Parse Run Id",
+            "type": "integer"
+          },
+          "target_document_id": {
+            "minimum": 1.0,
+            "title": "Target Document Id",
+            "type": "integer"
+          },
+          "target_parse_run_id": {
+            "minimum": 1.0,
+            "title": "Target Parse Run Id",
+            "type": "integer"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          }
+        },
+        "required": [
+          "relation_type",
+          "source_document_id",
+          "source_parse_run_id",
+          "target_document_id",
+          "target_parse_run_id"
+        ],
+        "title": "RelationCreateRequest",
+        "type": "object"
+      },
+      "RelationReviewRequest": {
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "boolean"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "required": [
+          "approved"
+        ],
+        "title": "RelationReviewRequest",
+        "type": "object"
+      },
+      "RelationSummary": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "relation_type": {
+            "title": "Relation Type",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "source_document_id": {
+            "title": "Source Document Id",
+            "type": "integer"
+          },
+          "source_parse_run_id": {
+            "title": "Source Parse Run Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_document_id": {
+            "title": "Target Document Id",
+            "type": "integer"
+          },
+          "target_parse_run_id": {
+            "title": "Target Parse Run Id",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          }
+        },
+        "required": [
+          "id",
+          "relation_type",
+          "source_document_id",
+          "source_parse_run_id",
+          "target_document_id",
+          "target_parse_run_id",
+          "status",
+          "rationale",
+          "valid_from",
+          "valid_to",
+          "created_by",
+          "reviewed_by",
+          "reviewed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RelationSummary",
+        "type": "object"
+      },
+      "ReviewDecisionRequest": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "outcome": {
+            "enum": [
+              "PASS",
+              "PASS_WITH_WARNING",
+              "REJECT"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "warning_acceptance": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning Acceptance"
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "title": "ReviewDecisionRequest",
+        "type": "object"
+      },
+      "ReviewDetail": {
+        "properties": {
+          "chunks": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Chunks",
+            "type": "array"
+          },
+          "fields": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "issues": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "metrics": {
+            "title": "Metrics",
+            "type": "object"
+          },
+          "nodes": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "pdf_available": {
+            "title": "Pdf Available",
+            "type": "boolean"
+          },
+          "run": {
+            "title": "Run",
+            "type": "object"
+          },
+          "target_type": {
+            "enum": [
+              "PARSE_RUN",
+              "CHUNK_RUN"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "run",
+          "metrics",
+          "nodes",
+          "fields",
+          "chunks",
+          "issues",
+          "pdf_available"
+        ],
+        "title": "ReviewDetail",
+        "type": "object"
+      },
+      "ReviewItemDecisionRequest": {
+        "properties": {
+          "action": {
+            "enum": [
+              "confirm",
+              "ignore",
+              "reject",
+              "correct"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "corrected_value": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corrected Value"
+          },
+          "target_id": {
+            "minimum": 1.0,
+            "title": "Target Id",
+            "type": "integer"
+          },
+          "target_type": {
+            "enum": [
+              "issue",
+              "field",
+              "node",
+              "chunk_issue",
+              "chunk"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id",
+          "action"
+        ],
+        "title": "ReviewItemDecisionRequest",
+        "type": "object"
+      },
+      "ReviewQueueItem": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "issue_count": {
+            "title": "Issue Count",
+            "type": "integer"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "enum": [
+              "PARSE_RUN",
+              "CHUNK_RUN"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id",
+          "job_id",
+          "document_id",
+          "title",
+          "state",
+          "issue_count",
+          "created_at"
+        ],
+        "title": "ReviewQueueItem",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "制度知识智能服务平台",
+    "version": "2.0.0-phase2"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/admin/batches": {
+      "get": {
+        "operationId": "list_batches_api_v1_admin_batches_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Batches",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_batch_api_v1_admin_batches_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Batch",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/batches/{batch_id}/complete": {
+      "post": {
+        "operationId": "complete_batch_api_v1_admin_batches__batch_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Batch",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/batches/{batch_id}/jobs": {
+      "post": {
+        "operationId": "upload_batch_job_api_v1_admin_batches__batch_id__jobs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_batch_job_api_v1_admin_batches__batch_id__jobs_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Batch Job",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/index-publications": {
+      "get": {
+        "operationId": "list_index_publications_api_v1_admin_index_publications_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Index Publications",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_index_publication_api_v1_admin_index_publications_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IndexPublicationCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Index Publication",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/index-publications/{request_id}/publish": {
+      "post": {
+        "operationId": "publish_index_publication_api_v1_admin_index_publications__request_id__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Index Publication",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/index-publications/{request_id}/retry": {
+      "post": {
+        "operationId": "retry_index_publication_api_v1_admin_index_publications__request_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Index Publication",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/indexes": {
+      "get": {
+        "operationId": "index_status_api_v1_admin_indexes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Index Status",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/jobs": {
+      "get": {
+        "operationId": "list_jobs_api_v1_admin_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_job_api_v1_admin_jobs_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_job_api_v1_admin_jobs_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Job",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/jobs/{job_id}": {
+      "get": {
+        "description": "返回任务、状态事件、产物和各运行审核记录的完整闭环。",
+        "operationId": "job_detail_api_v1_admin_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Job Detail",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/jobs/{job_id}/publish": {
+      "post": {
+        "description": "保留旧接口用于明确提示，V2发布必须通过全局索引发布请求。",
+        "operationId": "publish_job_api_v1_admin_jobs__job_id__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobPublishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Job",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "retry_job_api_v1_admin_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobRetryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Job",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/jobs/{job_id}/rework": {
+      "post": {
+        "operationId": "create_rework_job_api_v1_admin_jobs__job_id__rework_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_rework_job_api_v1_admin_jobs__job_id__rework_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Rework Job",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/knowledge/documents": {
+      "get": {
+        "description": "列出全部正式文件版本及其最新元数据治理状态。",
+        "operationId": "managed_documents_api_v1_admin_knowledge_documents_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Managed Documents",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/knowledge/documents/{document_id}/metadata": {
+      "get": {
+        "operationId": "metadata_detail_api_v1_admin_knowledge_documents__document_id__metadata_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Metadata Detail",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/knowledge/documents/{document_id}/metadata/drafts": {
+      "post": {
+        "operationId": "create_metadata_draft_api_v1_admin_knowledge_documents__document_id__metadata_drafts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetadataDraftCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Metadata Draft",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/knowledge/documents/{document_id}/metadata/{revision_id}": {
+      "put": {
+        "operationId": "update_metadata_revision_api_v1_admin_knowledge_documents__document_id__metadata__revision_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "title": "Revision Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetadataRevisionUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Metadata Revision",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/knowledge/documents/{document_id}/metadata/{revision_id}/review": {
+      "post": {
+        "operationId": "review_metadata_revision_api_v1_admin_knowledge_documents__document_id__metadata__revision_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "title": "Revision Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetadataReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Metadata Revision",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/knowledge/documents/{document_id}/metadata/{revision_id}/submit": {
+      "post": {
+        "operationId": "submit_metadata_revision_api_v1_admin_knowledge_documents__document_id__metadata__revision_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "title": "Revision Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Metadata Revision",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/knowledge/documents/{document_id}/parse-corrections": {
+      "post": {
+        "operationId": "create_parse_correction_api_v1_admin_knowledge_documents__document_id__parse_corrections_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParseNodeCorrectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Parse Correction",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/knowledge/documents/{document_id}/series": {
+      "put": {
+        "operationId": "assign_policy_series_api_v1_admin_knowledge_documents__document_id__series_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicySeriesAssignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assign Policy Series",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/knowledge/evidence-catalog": {
+      "get": {
+        "operationId": "evidence_catalog_api_v1_admin_knowledge_evidence_catalog_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence Catalog",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/knowledge/series": {
+      "get": {
+        "operationId": "policy_series_api_v1_admin_knowledge_series_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Policy Series",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/processes": {
+      "get": {
+        "operationId": "list_processes_api_v1_admin_processes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProcessSummary"
+                  },
+                  "title": "Response List Processes Api V1 Admin Processes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Processes",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_process_api_v1_admin_processes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Process",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/processes/{process_id}/evidence": {
+      "get": {
+        "operationId": "process_evidence_api_v1_admin_processes__process_id__evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "required": true,
+            "schema": {
+              "title": "Process Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvidenceReferenceResponse"
+                  },
+                  "title": "Response Process Evidence Api V1 Admin Processes  Process Id  Evidence Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Process Evidence",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "bind_process_evidence_api_v1_admin_processes__process_id__evidence_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "required": true,
+            "schema": {
+              "title": "Process Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceBindRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceReferenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bind Process Evidence",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/processes/{process_id}/evidence/{reference_id}": {
+      "delete": {
+        "operationId": "delete_process_evidence_api_v1_admin_processes__process_id__evidence__reference_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "required": true,
+            "schema": {
+              "title": "Process Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "reference_id",
+            "required": true,
+            "schema": {
+              "title": "Reference Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Process Evidence",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/processes/{process_id}/graph": {
+      "put": {
+        "operationId": "update_process_api_v1_admin_processes__process_id__graph_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "required": true,
+            "schema": {
+              "title": "Process Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessGraphUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Process",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/processes/{process_id}/publish": {
+      "post": {
+        "operationId": "publish_process_api_v1_admin_processes__process_id__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "required": true,
+            "schema": {
+              "title": "Process Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Process",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/processes/{process_id}/review": {
+      "post": {
+        "operationId": "review_process_api_v1_admin_processes__process_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "required": true,
+            "schema": {
+              "title": "Process Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "approved",
+            "required": true,
+            "schema": {
+              "title": "Approved",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Process",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/processes/{process_id}/submit": {
+      "post": {
+        "operationId": "submit_process_api_v1_admin_processes__process_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "required": true,
+            "schema": {
+              "title": "Process Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Process",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/relations": {
+      "get": {
+        "operationId": "list_relations_api_v1_admin_relations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RelationSummary"
+                  },
+                  "title": "Response List Relations Api V1 Admin Relations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Relations",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_relation_api_v1_admin_relations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Relation",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/relations/{relation_id}/evidence": {
+      "get": {
+        "operationId": "relation_evidence_api_v1_admin_relations__relation_id__evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "relation_id",
+            "required": true,
+            "schema": {
+              "title": "Relation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvidenceReferenceResponse"
+                  },
+                  "title": "Response Relation Evidence Api V1 Admin Relations  Relation Id  Evidence Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Relation Evidence",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "bind_relation_evidence_api_v1_admin_relations__relation_id__evidence_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "relation_id",
+            "required": true,
+            "schema": {
+              "title": "Relation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceBindRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceReferenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bind Relation Evidence",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/relations/{relation_id}/evidence/{reference_id}": {
+      "delete": {
+        "operationId": "delete_relation_evidence_api_v1_admin_relations__relation_id__evidence__reference_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "relation_id",
+            "required": true,
+            "schema": {
+              "title": "Relation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "reference_id",
+            "required": true,
+            "schema": {
+              "title": "Reference Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Relation Evidence",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/relations/{relation_id}/review": {
+      "post": {
+        "operationId": "review_relation_api_v1_admin_relations__relation_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "relation_id",
+            "required": true,
+            "schema": {
+              "title": "Relation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Relation",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/relations/{relation_id}/submit": {
+      "post": {
+        "operationId": "submit_relation_api_v1_admin_relations__relation_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "relation_id",
+            "required": true,
+            "schema": {
+              "title": "Relation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Relation",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews": {
+      "get": {
+        "operationId": "review_queue_api_v1_admin_reviews_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_history",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include History",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewQueueItem"
+                  },
+                  "title": "Response Review Queue Api V1 Admin Reviews Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Queue",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews/{job_id}": {
+      "get": {
+        "operationId": "review_detail_api_v1_admin_reviews__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Detail",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews/{job_id}/decision": {
+      "post": {
+        "operationId": "review_decision_api_v1_admin_reviews__job_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Decision",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews/{job_id}/items/decision": {
+      "post": {
+        "operationId": "review_item_decision_api_v1_admin_reviews__job_id__items_decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewItemDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Item Decision",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews/{job_id}/pdf": {
+      "get": {
+        "operationId": "review_pdf_api_v1_admin_reviews__job_id__pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Pdf",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/settings/process-reviewer": {
+      "get": {
+        "operationId": "get_process_reviewer_api_v1_admin_settings_process_reviewer_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Process Reviewer",
+        "tags": [
+          "admin"
+        ]
+      },
+      "put": {
+        "operationId": "set_process_reviewer_api_v1_admin_settings_process_reviewer_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessReviewerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Process Reviewer",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/auth/change-password": {
+      "post": {
+        "operationId": "change_password_api_v1_auth_change_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "me_api_v1_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/providers": {
+      "get": {
+        "operationId": "providers_api_v1_auth_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuthProviderSummary"
+                  },
+                  "title": "Response Providers Api V1 Auth Providers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Providers",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/chat/messages/{message_id}/feedback": {
+      "post": {
+        "operationId": "submit_feedback_api_v1_chat_messages__message_id__feedback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageFeedbackCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageFeedbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Feedback",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/sessions": {
+      "get": {
+        "operationId": "list_sessions_api_v1_chat_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChatSessionSummary"
+                  },
+                  "title": "Response List Sessions Api V1 Chat Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Sessions",
+        "tags": [
+          "chat"
+        ]
+      },
+      "post": {
+        "operationId": "create_session_api_v1_chat_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatSessionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSessionSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Session",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/sessions/{session_id}": {
+      "delete": {
+        "operationId": "delete_session_api_v1_chat_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Session",
+        "tags": [
+          "chat"
+        ]
+      },
+      "patch": {
+        "operationId": "rename_session_api_v1_chat_sessions__session_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatSessionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSessionSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename Session",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/sessions/{session_id}/messages": {
+      "get": {
+        "operationId": "list_messages_api_v1_chat_sessions__session_id__messages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessageListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Messages",
+        "tags": [
+          "chat"
+        ]
+      },
+      "post": {
+        "operationId": "send_message_api_v1_chat_sessions__session_id__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatMessageCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTurnResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send Message",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/diagnostics/requests": {
+      "get": {
+        "operationId": "list_diagnostics_api_v1_diagnostics_requests_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Request Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            }
+          },
+          {
+            "in": "query",
+            "name": "answer_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(ANSWER|INSUFFICIENT_EVIDENCE|CONFLICT)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answer Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "quality_gate_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(PASS|DOWNGRADED|NOT_REQUIRED)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Quality Gate Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "has_down_feedback",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Has Down Feedback"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Diagnostics",
+        "tags": [
+          "diagnostics"
+        ]
+      }
+    },
+    "/api/v1/diagnostics/requests/{request_id}": {
+      "get": {
+        "operationId": "get_diagnostic_api_v1_diagnostics_requests__request_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticRequestDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Diagnostic",
+        "tags": [
+          "diagnostics"
+        ]
+      }
+    },
+    "/api/v1/documents": {
+      "get": {
+        "operationId": "list_documents_api_v1_documents_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "issuer",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Issuer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "department",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Department"
+            }
+          },
+          {
+            "in": "query",
+            "name": "publish_date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Publish Date From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "publish_date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Publish Date To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_by",
+            "required": false,
+            "schema": {
+              "default": "updated_at",
+              "pattern": "^(updated_at|title|document_code|issuer|publish_date|effective_date|status|responsibility_department)$",
+              "title": "Sort By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "pattern": "^(asc|desc)$",
+              "title": "Sort Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Documents",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/facets": {
+      "get": {
+        "description": "返回制度库 Select 使用的真实候选值。",
+        "operationId": "list_document_facets_api_v1_documents_facets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentFacetsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Document Facets",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/{document_id}": {
+      "get": {
+        "operationId": "get_document_api_v1_documents__document_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Document",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/{document_id}/nodes": {
+      "get": {
+        "operationId": "list_document_nodes_api_v1_documents__document_id__nodes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentNodeListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Document Nodes",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/{document_id}/pdf": {
+      "get": {
+        "operationId": "get_document_pdf_api_v1_documents__document_id__pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Document Pdf",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/health/live": {
+      "get": {
+        "description": "只证明Platform API进程可响应，不探测外部依赖。",
+        "operationId": "live_api_v1_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Live",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "description": "验证Platform业务库就绪；不会调用RAG查询之外的端点。",
+        "operationId": "ready_api_v1_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ready",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

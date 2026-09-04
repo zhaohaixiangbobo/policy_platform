@@ -1,0 +1,14 @@
+# 文件说明：排除依赖、构建产物、本地数据库和运行时配置。
+node_modules/
+frontend/dist/
+frontend/.vite/
+backend/.pytest_cache/
+backend/**/__pycache__/
+backend/*.db
+backend/*.db-*
+var/
+.env
+.coverage
+htmlcov/
+*.pyc
+*.log
