@@ -1,6 +1,8 @@
 """文件说明：创建统一FastAPI应用并管理独立 RAG API 客户端生命周期。"""
 
 from contextlib import asynccontextmanager
+import os
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -9,6 +11,7 @@ from app.api.v1.router import api_router
 from app.config import get_settings
 from app.middleware import RequestIdMiddleware
 from app.infrastructure.rag_api_client import RagApiClient, RagApiClientError
+from app.logging_config import configure_rotating_logger
 from knowledge.catalog import KnowledgeCatalogService
 from knowledge.config import KnowledgePaths
 from knowledge.management import KnowledgeManagementService
@@ -21,6 +24,16 @@ async def lifespan(application: FastAPI):
     """装配管理目录和 RAG HTTP 客户端，停止时统一释放连接。"""
 
     settings = get_settings()
+    configure_rotating_logger(
+        "policy_platform.api",
+        level_name=os.getenv("PLATFORM_API_LOG_LEVEL", "INFO"),
+        log_file=os.getenv(
+            "PLATFORM_API_LOG_FILE",
+            str(Path(__file__).resolve().parents[2] / "logs" / "api.log"),
+        ),
+        max_bytes=int(os.getenv("PLATFORM_API_LOG_MAX_BYTES", str(10 * 1024 * 1024))),
+        backup_count=int(os.getenv("PLATFORM_API_LOG_BACKUP_COUNT", "5")),
+    )
     paths = KnowledgePaths(settings.knowledge_data_root)
     # 空库首次启动也必须得到稳定目录和独立索引配置，不依赖迁移测试数据。
     KnowledgeManagementService(paths).initialize_empty_baseline()

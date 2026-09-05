@@ -19,8 +19,11 @@ from app.infrastructure.db.models import (
 from knowledge.management import KnowledgeManagementService
 
 
+EXACT_SNAPSHOT_CONTRACT = "exact_snapshot_v2"
+
+
 class PublicationService:
-    """一次请求冻结若干变更，实际IndexRun仍包含完整可发布知识快照。"""
+    """一次请求冻结完整基线和本次变更，保证IndexRun来源集合精确可审计。"""
 
     def __init__(
         self,
@@ -75,9 +78,6 @@ class PublicationService:
             if change is None:
                 missing.append(document_id)
                 continue
-            source = self.management.publication_source(
-                document_id, int(change.metadata_revision_id)
-            )
             if job is not None:
                 if job.state == "FAILED":
                     raise JobConflictError(
@@ -85,8 +85,14 @@ class PublicationService:
                     )
                 if job.state not in {"READY_FOR_INDEX", "INDEX_QUEUED"}:
                     raise JobConflictError(
-                        f"制度 {document_id} 的入库任务状态为 {job.state}，不能创建发布请求"
+                        f"制度 {document_id} 的入库任务状态为 {job.state}，"
+                        "请先在审核工作台完成分块审核"
                     )
+            # 先给出可操作的Platform流程提示，再检查Knowledge侧精确来源。
+            source = self.management.publication_source(
+                document_id, int(change.metadata_revision_id)
+            )
+            if job is not None:
                 if (job.parse_run_id, job.chunk_run_id) != (
                     source["parse_run_id"], source["chunk_run_id"]
                 ):
@@ -95,22 +101,44 @@ class PublicationService:
 
         if missing:
             raise JobConflictError(f"以下制度尚未完成审核或没有待发布变更：{missing}")
+        baseline = self.management.active_index_snapshot()
+        frozen_sources: dict[int, dict[str, int | str | None]] = {
+            int(source["document_id"]): {
+                **source,
+                "source_role": "BASELINE",
+                "job_id": None,
+            }
+            for source in baseline["sources"]
+        }
+        for job, change, source in bindings:
+            frozen_sources[int(source["document_id"])] = {
+                **source,
+                "metadata_revision_id": int(change.metadata_revision_id),
+                "source_role": "CHANGE",
+                "job_id": job.id if job else None,
+            }
+
         request = IndexPublicationRequest(
             status="BUILD_QUEUED",
+            snapshot_contract_version=EXACT_SNAPSHOT_CONTRACT,
+            base_index_run_id=baseline["index_run_id"],
             source_document_ids_json=json.dumps(normalized),
             requested_by=actor_user_id,
         )
         self.session.add(request)
         self.session.flush()
-        for job, change, source in bindings:
+        for document_id in sorted(frozen_sources):
+            source = frozen_sources[document_id]
             self.session.add(IndexPublicationSource(
                 publication_request_id=request.id,
-                job_id=job.id if job else None,
-                document_id=source["document_id"],
-                parse_run_id=source["parse_run_id"],
-                chunk_run_id=source["chunk_run_id"],
-                metadata_revision_id=int(change.metadata_revision_id),
+                job_id=source["job_id"],
+                source_role=str(source["source_role"]),
+                document_id=int(source["document_id"]),
+                parse_run_id=int(source["parse_run_id"]),
+                chunk_run_id=int(source["chunk_run_id"]),
+                metadata_revision_id=int(source["metadata_revision_id"]),
             ))
+        for job, _change, _source in bindings:
             if job is not None and job.state == "READY_FOR_INDEX":
                 self.ingestion.transition(
                     job, "INDEX_QUEUED", f"已加入索引发布请求 {request.id}", actor_user_id
@@ -138,12 +166,24 @@ class PublicationService:
                 raise JobConflictError(f"发布任务绑定缺少入库任务：{binding.job_id}")
             result.append((binding, job))
         request = self._get(request_id)
+        if request.snapshot_contract_version != EXACT_SNAPSHOT_CONTRACT:
+            raise JobConflictError("历史发布请求不具备精确全量快照契约，仅供审计")
         requested_documents = set(self.document_ids(request))
         bound_documents = {int(binding.document_id) for binding, _job in result}
-        if bound_documents != requested_documents:
+        change_documents = {
+            int(binding.document_id)
+            for binding, _job in result
+            if binding.source_role == "CHANGE"
+        }
+        if not result or not requested_documents.issubset(bound_documents):
             raise JobConflictError(
                 f"发布请求来源绑定不完整：requested={sorted(requested_documents)}, "
                 f"bound={sorted(bound_documents)}"
+            )
+        if change_documents != requested_documents:
+            raise JobConflictError(
+                f"发布请求变更来源不一致：requested={sorted(requested_documents)}, "
+                f"changes={sorted(change_documents)}"
             )
         return result
 
@@ -216,6 +256,8 @@ def publication_dict(item: IndexPublicationRequest, *, can_retry: bool = False) 
     return {
         "id": item.id,
         "status": item.status,
+        "snapshot_contract_version": item.snapshot_contract_version,
+        "base_index_run_id": item.base_index_run_id,
         "document_ids": json.loads(item.source_document_ids_json),
         "index_run_id": item.index_run_id,
         "alias_name": item.alias_name,

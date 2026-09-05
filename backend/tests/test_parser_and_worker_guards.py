@@ -8,7 +8,7 @@ import pytest
 
 from knowledge.chunking.review import ChunkReviewService
 from knowledge.chunking.chunker import PolicyChunker
-from knowledge.parser.analyzer import validate_structure
+from knowledge.parser.analyzer import build_nodes, classify_article_remainder, validate_structure
 from knowledge.parser.database import ParserDatabase, utc_now
 from knowledge.parser.pipeline import ParserConfig
 from knowledge.parser.review import ReviewService as ParseReviewService
@@ -44,6 +44,108 @@ def test_character_coverage_uses_parser_configuration() -> None:
 def test_parser_configuration_rejects_inverted_thresholds() -> None:
     with pytest.raises(ValueError, match="error <= review"):
         ParserConfig(character_error_threshold=0.99, character_review_threshold=0.98)
+
+
+def test_parser_configuration_rejects_automatic_activation() -> None:
+    with pytest.raises(ValueError, match="自动激活已禁用"):
+        ParserConfig(auto_activate=True)
+
+
+def test_article_title_rules_prioritize_structure_and_expose_heuristic_review() -> None:
+    """长条标题可由冒号强证据识别，模糊短标题必须进入人工复核。"""
+
+    strong = classify_article_remainder(
+        "关于专业技能竞赛表彰奖励范围和标准的具体规定：", "（一）国家级竞赛"
+    )
+    normative = classify_article_remainder(
+        "有下列情形之一的，应当予以奖励：", "（一）获得一等奖"
+    )
+    assert strong == {
+        "kind": "strong", "title": "关于专业技能竞赛表彰奖励范围和标准的具体规定", "needs_review": False,
+    }
+    assert normative["kind"] == "content"
+
+    def block(key: str, text: str) -> dict[str, object]:
+        return {
+            "temp_key": key, "raw_text": text, "clean_text": text,
+            "part_type": "document", "block_type": "paragraph",
+            "excluded_role": "none", "properties": {},
+        }
+
+    blocks = [block("b1", "第四条 奖励发放"), block("b2", "（一）按月发放")]
+    nodes = build_nodes(blocks)
+    issues, _metrics = validate_structure(blocks, nodes, {})
+    assert nodes[0]["title"] == "奖励发放"
+    assert nodes[0]["review_status"] == "pending"
+    assert nodes[0]["rule_id"] == "NODE_ARTICLE_TITLE_HEURISTIC_V2"
+    assert any(item["issue_code"] == "NODE_ARTICLE_TITLE_HEURISTIC" for item in issues)
+
+
+def test_human_can_restore_heuristic_article_title_to_content() -> None:
+    """人工调整必须关闭关联问题、恢复正文并同步重算后代路径。"""
+
+    runtime_root = Path(os.environ["POLICY_TEST_RUNTIME_ROOT"]).resolve()
+    database_path = runtime_root / uuid4().hex / "knowledge" / "policy_parser.db"
+    database_path.parent.mkdir(parents=True)
+    now = utc_now()
+    with ParserDatabase(database_path) as database:
+        document_id = database.get_or_create_document({
+            "source_file": "pending/article.docx", "file_name": "article.docx",
+            "file_size": 10, "mime_type": "application/docx", "checksum": uuid4().hex,
+        })
+        run_id = database.create_parse_run(document_id, "0.1.4", "article-title-v2")
+        parent = database.connection.execute(
+            """
+            INSERT INTO policy_node (
+                document_id,parse_run_id,temp_key,node_type,node_number,title,raw_text,
+                content,normalized_content,level,path_text,order_no,parser_confidence,
+                decision_method,rule_id,review_status,review_reason,created_at,updated_at
+            ) VALUES (?,?,?,'article','第四条','奖励发放',?,NULL,?,1,'奖励发放',1,
+                      0.99,'rule','NODE_ARTICLE_TITLE_HEURISTIC_V2','pending','待确认',?,?)
+            """,
+            (document_id, run_id, "node-1", "第四条 奖励发放", "第四条 奖励发放", now, now),
+        )
+        node_id = int(parent.lastrowid)
+        database.connection.execute(
+            """
+            INSERT INTO policy_node (
+                document_id,parse_run_id,parent_id,temp_key,node_type,node_number,raw_text,
+                content,normalized_content,level,path_text,order_no,parser_confidence,
+                decision_method,review_status,created_at,updated_at
+            ) VALUES (?,?,?,?,'item','（一）','（一）按月发放','按月发放','（一）按月发放',
+                      2,'奖励发放 > （一）',2,0.99,'rule','confirmed',?,?)
+            """,
+            (document_id, run_id, node_id, "node-2", now, now),
+        )
+        database.connection.execute(
+            """
+            INSERT INTO validation_issue (
+                parse_run_id,node_id,stage,issue_code,severity,message,details_json,resolved
+            ) VALUES (?,?,'structure_validation','NODE_ARTICLE_TITLE_HEURISTIC','review','待确认','{}',0)
+            """,
+            (run_id, node_id),
+        )
+        database.connection.commit()
+
+    with ParseReviewService(database_path) as review:
+        review.decide_article_title(
+            run_id=run_id, node_id=node_id, mode="CONTENT", reviewed_by="reviewer"
+        )
+        node = review.db.connection.execute(
+            "SELECT title,content,review_status,rule_id FROM policy_node WHERE id=?", (node_id,)
+        ).fetchone()
+        child_path = review.db.connection.execute(
+            "SELECT path_text FROM policy_node WHERE parent_id=?", (node_id,)
+        ).fetchone()[0]
+        unresolved = review.db.connection.execute(
+            "SELECT COUNT(*) FROM validation_issue WHERE node_id=? AND resolved=0", (node_id,)
+        ).fetchone()[0]
+    assert dict(node) == {
+        "title": None, "content": "奖励发放", "review_status": "confirmed",
+        "rule_id": "NODE_ARTICLE_CONTENT_HUMAN_V1",
+    }
+    assert child_path.startswith("第四条 >")
+    assert unresolved == 0
 
 
 def test_worker_rejects_failed_run_result() -> None:

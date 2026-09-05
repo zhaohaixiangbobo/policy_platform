@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+import time
+
 import httpx
 from pydantic import ValidationError
 
 from knowledge.contracts import ErrorResponse, QueryResponse
+
+
+LOGGER = logging.getLogger("policy_platform.api.dependencies.rag_api")
 
 
 class RagApiClientError(RuntimeError):
@@ -54,6 +60,11 @@ class RagApiClient:
     ) -> QueryResponse:
         """调用唯一公开查询端点；不在 Platform 侧叠加重试。"""
 
+        started = time.perf_counter()
+        LOGGER.info(
+            "event=dependency_call_started dependency=rag_api operation=query request_id=%s query_scope=%s",
+            request_id, query_scope,
+        )
         try:
             response = await self._client.post(
                 "/v1/rag/query",
@@ -61,6 +72,10 @@ class RagApiClient:
                 headers={"X-Request-ID": request_id},
             )
         except httpx.RequestError as exc:
+            LOGGER.error(
+                "event=dependency_call_failed dependency=rag_api operation=query request_id=%s query_scope=%s elapsed_ms=%d error_code=RAG_API_UNAVAILABLE error_type=%s",
+                request_id, query_scope, int((time.perf_counter() - started) * 1000), type(exc).__name__,
+            )
             raise RagApiClientError(
                 code="RAG_API_UNAVAILABLE",
                 message="制度知识服务暂不可用",
@@ -72,6 +87,11 @@ class RagApiClient:
         if response.is_error:
             try:
                 detail = ErrorResponse.model_validate(response.json()).error
+                LOGGER.warning(
+                    "event=dependency_call_failed dependency=rag_api operation=query request_id=%s query_scope=%s status_code=%d elapsed_ms=%d error_code=%s",
+                    request_id, query_scope, response.status_code,
+                    int((time.perf_counter() - started) * 1000), detail.code,
+                )
                 raise RagApiClientError(
                     code=detail.code,
                     message=detail.message,
@@ -80,6 +100,11 @@ class RagApiClient:
                     http_status=response.status_code,
                 )
             except (ValueError, ValidationError) as exc:
+                LOGGER.error(
+                    "event=dependency_response_invalid dependency=rag_api operation=query request_id=%s query_scope=%s status_code=%d elapsed_ms=%d",
+                    request_id, query_scope, response.status_code,
+                    int((time.perf_counter() - started) * 1000),
+                )
                 raise RagApiClientError(
                     code="RAG_API_ERROR_RESPONSE_INVALID",
                     message="制度知识服务返回了无效错误响应",
@@ -89,8 +114,19 @@ class RagApiClient:
                 ) from exc
 
         try:
-            return QueryResponse.model_validate(response.json())
+            result = QueryResponse.model_validate(response.json())
+            LOGGER.info(
+                "event=dependency_call_completed dependency=rag_api operation=query request_id=%s query_scope=%s status_code=%d elapsed_ms=%d result_status=%s",
+                request_id, query_scope, response.status_code,
+                int((time.perf_counter() - started) * 1000), result.status,
+            )
+            return result
         except (ValueError, ValidationError) as exc:
+            LOGGER.error(
+                "event=dependency_response_invalid dependency=rag_api operation=query request_id=%s query_scope=%s status_code=%d elapsed_ms=%d",
+                request_id, query_scope, response.status_code,
+                int((time.perf_counter() - started) * 1000),
+            )
             raise RagApiClientError(
                 code="RAG_API_RESPONSE_INVALID",
                 message="制度知识服务响应未通过公开契约校验",

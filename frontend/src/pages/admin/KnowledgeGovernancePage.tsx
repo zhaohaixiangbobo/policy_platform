@@ -2,7 +2,7 @@
  * 文件说明：提供正式文件版本、制度系列、元数据修订、废止和索引发布的一体化治理页面。
  */
 import { CheckOutlined, EditOutlined, FileSyncOutlined, LinkOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Descriptions, Drawer, Form, Input, List, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Drawer, Form, Input, List, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import type { Key } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -41,6 +41,13 @@ export function KnowledgeGovernancePage() {
   const [selectedIds, setSelectedIds] = useState<Key[]>([]);
   const [detail, setDetail] = useState<ManagedDocumentDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [keywordInput, setKeywordInput] = useState('');
+  const [keyword, setKeyword] = useState('');
+  const [metadataStatus, setMetadataStatus] = useState<string>();
+  const [sortBy, setSortBy] = useState('ACTION_REQUIRED');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [seriesOpen, setSeriesOpen] = useState(false);
   const [form] = Form.useForm<Partial<MetadataRevision>>();
   const [seriesForm] = Form.useForm<{ series_id?: number; canonical_title?: string }>();
@@ -49,13 +56,13 @@ export function KnowledgeGovernancePage() {
     if (!silent) setLoading(true);
     try {
       const [documentRows, seriesRows, publicationRows] = await Promise.all([
-        listManagedDocuments(), listPolicySeries(), listIndexPublications(),
+        listManagedDocuments({ keyword, metadata_status: metadataStatus, sort_by: sortBy, page }), listPolicySeries(), listIndexPublications(),
       ]);
-      setDocuments(documentRows); setSeries(seriesRows); setPublications(publicationRows);
+      setDocuments(documentRows.items); setTotal(documentRows.total); setSeries(seriesRows); setPublications(publicationRows);
     } catch (error) { message.error(error instanceof Error ? error.message : '制度治理数据加载失败'); }
     finally { if (!silent) setLoading(false); }
   };
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => { void refresh(); }, [keyword, metadataStatus, sortBy, page]);
   useEffect(() => {
     const active = publications.some((item) => ['BUILD_QUEUED', 'BUILDING', 'PUBLISH_QUEUED', 'PUBLISHING'].includes(item.status));
     const poll = () => { if (document.visibilityState === 'visible') void refresh(true); };
@@ -100,8 +107,15 @@ export function KnowledgeGovernancePage() {
   };
   const submit = async () => {
     if (!detail || !current) return;
-    try { await submitMetadataRevision(detail.document.id, current.id); message.success('元数据已提交审核'); await reloadDetail(); }
-    catch (error) { message.error(error instanceof Error ? error.message : '提交失败'); }
+    setActionLoading(true);
+    try {
+      const values = await form.validateFields();
+      await updateMetadataRevision(detail.document.id, current.id, values);
+      await submitMetadataRevision(detail.document.id, current.id);
+      message.success('当前内容已保存并提交审核');
+      await reloadDetail();
+    } catch (error) { if (error instanceof Error) message.error(error.message); }
+    finally { setActionLoading(false); }
   };
   const review = async (approved: boolean) => {
     if (!detail || !current) return;
@@ -139,7 +153,19 @@ export function KnowledgeGovernancePage() {
     <div className="admin-page-title"><div><Typography.Title level={2}>制度治理与发布</Typography.Title><Typography.Text type="secondary">正式文件版本、制度系列、元数据修订和全局索引发布</Typography.Text></div><Space><Button icon={<UiIcon icon={ReloadOutlined} />} onClick={() => void refresh()}>刷新</Button><Button type="primary" icon={<UiIcon icon={FileSyncOutlined} />} onClick={() => void buildPublication()}>构建索引快照</Button></Space></div>
     <Alert showIcon type="info" message="只有Alias切换成功才算正式发布" description="元数据审核通过只形成候选版本；IndexRun会冻结Document、ParseRun、ChunkRun和MetadataRevision。切换失败时，旧索引和旧元数据继续生效。" />
     <Card variant="borderless" className="admin-table-card">
-      <Table<ManagedDocument> rowKey="id" loading={loading} columns={columns} dataSource={documents} rowSelection={{ selectedRowKeys: selectedIds, onChange: setSelectedIds }} pagination={{ pageSize: 20 }} />
+      <Space wrap style={{ marginBottom: 16 }}>
+        <Input.Search value={keywordInput} allowClear placeholder="搜索制度名称、文号、机构或责任部门" style={{ width: 360 }} onChange={(event) => setKeywordInput(event.target.value)} onSearch={(value) => { setPage(1); setKeyword(value.trim()); }} />
+        <Select allowClear placeholder="元数据状态" style={{ width: 190 }} value={metadataStatus} onChange={(value) => { setPage(1); setMetadataStatus(value); }} options={[
+          { value: 'ACTION_REQUIRED', label: '需要处理' }, { value: 'DRAFT', label: '草稿' },
+          { value: 'PENDING_REVIEW', label: '待审核' }, { value: 'APPROVED', label: '审核通过待发布' },
+          { value: 'PUBLISHED', label: '当前快照生效' }, { value: 'REJECTED', label: '已驳回' },
+        ]} />
+        <Select style={{ width: 190 }} value={sortBy} onChange={(value) => { setPage(1); setSortBy(value); }} options={[
+          { value: 'ACTION_REQUIRED', label: '需要处理优先' }, { value: 'UPDATED_DESC', label: '最近更新优先' },
+          { value: 'PUBLISH_DATE_DESC', label: '发布日期倒序' }, { value: 'TITLE_ASC', label: '制度名称排序' },
+        ]} />
+      </Space>
+      <Table<ManagedDocument> rowKey="id" loading={loading} columns={columns} dataSource={documents} rowSelection={{ selectedRowKeys: selectedIds, onChange: setSelectedIds }} pagination={{ current: page, pageSize: 10, total, showSizeChanger: false, onChange: setPage }} />
     </Card>
     <Card title="索引发布生命周期" variant="borderless"><List dataSource={publications.slice(0, 8)} locale={{ emptyText: '尚无V2发布请求' }} renderItem={(item) => <List.Item actions={item.status === 'READY_TO_PUBLISH' ? [<Popconfirm key="publish" title="确认切换Alias并正式发布？" onConfirm={() => void confirmIndexPublication(item.id).then(() => { message.success('发布已排队'); return refresh(); }).catch((error) => message.error(error.message))}><Button type="primary" size="small">确认发布</Button></Popconfirm>] : item.status === 'FAILED' && item.can_retry ? [<Popconfirm key="retry" title="按原发布请求重试？" onConfirm={() => void retryIndexPublication(item.id).then(() => { message.success('发布请求已重新排队'); return refresh(); }).catch((error) => message.error(error.message))}><Button size="small">重试原请求</Button></Popconfirm>] : undefined}><Space><Tag color={item.status === 'PUBLISHED' ? 'green' : item.status === 'FAILED' ? 'red' : 'blue'}>{publicationLabels[item.status] ?? item.status}</Tag><Typography.Text>制度 {item.document_ids.join('、')} · IndexRun {item.index_run_id ?? '待生成'}</Typography.Text>{item.status === 'FAILED' && !item.can_retry && <Tag>历史记录，仅供审计</Tag>}{item.error_summary && <Typography.Text type="danger">{item.error_summary}</Typography.Text>}</Space></List.Item>} /></Card>
 
@@ -154,7 +180,7 @@ export function KnowledgeGovernancePage() {
             <Form.Item name="change_reason" label="修订原因"><Input.TextArea rows={2} /></Form.Item>
             {(current.source_type === 'REPEAL' || current.status === 'repealed') && <><div className="metadata-form-grid"><Form.Item name="repeal_date" label="废止日期"><Input /></Form.Item><Form.Item name="repeal_reason" label="废止原因"><Input /></Form.Item><Form.Item name="repeal_evidence" label="废止依据"><Input /></Form.Item></div><Alert showIcon type="info" message="废止状态与制度关系分别留痕" description="本页确认该文件版本的废止元数据；如果由另一份制度废止，还应在制度关系页建立REPEALS关系并绑定原文证据。" action={<Button size="small" onClick={() => navigate('/admin/relations')}>前往制度关系</Button>} /></>}
           </Form>
-          <Space>{current.lifecycle_status === 'DRAFT' && <><Button type="primary" onClick={() => void save()}>保存草稿</Button><Button onClick={() => void submit()}>提交审核</Button></>}{current.lifecycle_status === 'PENDING_REVIEW' && <><Button type="primary" icon={<UiIcon icon={CheckOutlined} />} onClick={() => void review(true)}>审核通过</Button><Button danger onClick={() => void review(false)}>驳回</Button></>}</Space>
+          <Space>{current.lifecycle_status === 'DRAFT' && <><Button onClick={() => void save()}>保存草稿</Button><Button type="primary" loading={actionLoading} onClick={() => void submit()}>保存并提交审核</Button></>}{current.lifecycle_status === 'PENDING_REVIEW' && <><Button type="primary" icon={<UiIcon icon={CheckOutlined} />} onClick={() => void review(true)}>审核通过</Button><Button danger onClick={() => void review(false)}>驳回</Button></>}</Space>
         </Card></section>
         <aside><Card size="small" title="解析识别候选"><List size="small" dataSource={Object.entries(candidateGroups)} renderItem={([field, items]) => <List.Item><div><strong>{fieldLabels[field] ?? field}</strong>{items.slice(0, 3).map((item) => <p key={item.id}><Button type="link" size="small" disabled={current.lifecycle_status !== 'DRAFT'} onClick={() => form.setFieldValue(field as keyof MetadataRevision, item.normalized_value || item.raw_value)}>{item.normalized_value || item.raw_value}</Button><small>置信度 {(item.confidence * 100).toFixed(0)}% · 第{item.page_start ?? '-'}页</small></p>)}</div></List.Item>} /></Card><Card size="small" title="修订历史"><List size="small" dataSource={detail.revisions} renderItem={(item) => <List.Item><Space><Tag>{item.revision_no}</Tag><span>{lifecycleLabels[item.lifecycle_status] ?? item.lifecycle_status}</span></Space></List.Item>} /></Card></aside>
       </div>}

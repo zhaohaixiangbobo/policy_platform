@@ -38,16 +38,30 @@ export interface ReviewQueueItem {
   job_id: string;
   document_id: number | null;
   title: string;
+  document_code: string | null;
   state: string;
   issue_count: number;
+  review_status: string;
+  processing_status: 'PENDING' | 'PROCESSED';
+  review_outcome: 'PASS' | 'PASS_WITH_WARNING' | 'REJECT' | null;
+  display_state: 'ACTION_REQUIRED' | 'READY_TO_SUBMIT' | 'PASS' | 'PASS_WITH_WARNING' | 'REJECT' | 'FAILED';
   created_at: string;
+  updated_at: string;
+}
+
+export interface ReviewQueuePage {
+  items: ReviewQueueItem[];
+  total: number;
+  page: number;
+  page_size: 10;
+  counts: Record<string, number>;
 }
 
 export interface ReviewDetail {
   target_type: 'PARSE_RUN' | 'CHUNK_RUN';
   run: Record<string, unknown> & { document_title?: string; document_code?: string; page_count?: number; render_engine?: string; review_status?: string };
   metrics: Record<string, unknown>;
-  nodes: Array<Record<string, unknown> & { id: number; parent_id: number | null; title: string | null; text: string | null; path_text: string | null; page_start: number | null; page_end: number | null; node_type: string }>;
+  nodes: Array<Record<string, unknown> & { id: number; parent_id: number | null; title: string | null; text: string | null; path_text: string | null; page_start: number | null; page_end: number | null; node_type: string; rule_id?: string | null; review_status?: string; review_reason?: string | null }>;
   fields: Array<Record<string, unknown> & { id: number; field_name: string; raw_value: string; normalized_value: string | null; confidence: number }>;
   chunks: Array<Record<string, unknown> & { id: number; chunk_key: string; chunk_type: string; is_retrievable: boolean; path_text: string | null; retrieval_text: string; char_count: number; token_count: number | null; page_start: number | null; page_end: number | null; sources: Array<Record<string, unknown>> }>;
   issues: Array<Record<string, unknown> & { id: number; issue_code: string; issue_type: string; severity: string; message: string; resolved: boolean }>;
@@ -117,8 +131,25 @@ export async function uploadJob(file: File, taskName?: string, initialDocumentSt
   return response.json() as Promise<{ id: string; state: string }>;
 }
 
-export function listReviews(includeHistory = false) {
-  return requestJson<ReviewQueueItem[]>(`/api/v1/admin/reviews${includeHistory ? '?include_history=true' : ''}`);
+export function listReviews(params?: {
+  include_history?: boolean;
+  processing_status?: 'PENDING' | 'PROCESSED';
+  target_type?: 'PARSE_RUN' | 'CHUNK_RUN';
+  keyword?: string;
+  review_state?: string;
+  sort_by?: 'UPDATED_DESC' | 'OLDEST_PENDING' | 'TITLE_ASC';
+  page?: number;
+}) {
+  const query = new URLSearchParams();
+  query.set('include_history', String(params?.include_history ?? true));
+  if (params?.processing_status) query.set('processing_status', params.processing_status);
+  if (params?.target_type) query.set('target_type', params.target_type);
+  if (params?.keyword) query.set('keyword', params.keyword);
+  if (params?.review_state) query.set('review_state', params.review_state);
+  query.set('sort_by', params?.sort_by ?? 'UPDATED_DESC');
+  query.set('page', String(params?.page ?? 1));
+  query.set('page_size', '10');
+  return requestJson<ReviewQueuePage>(`/api/v1/admin/reviews?${query.toString()}`);
 }
 
 export function decideReview(jobId: string, outcome: 'PASS' | 'PASS_WITH_WARNING' | 'REJECT', comment?: string) {
@@ -135,6 +166,14 @@ export function decideReviewItem(jobId: string, payload: { target_type: 'issue' 
   return requestJson<Record<string, unknown>>(`/api/v1/admin/reviews/${jobId}/items/decision`, { method: 'POST', body: JSON.stringify(payload) });
 }
 
+export function batchReviewItems(jobId: string, payload: { target_type: 'node' | 'issue' | 'chunk_issue'; target_ids: number[]; action: 'confirm' | 'ignore'; comment?: string }) {
+  return requestJson<Record<string, unknown>>(`/api/v1/admin/reviews/${jobId}/items/batch-decision`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function decideArticleTitle(jobId: string, payload: { node_id: number; mode: 'TITLE' | 'CONTENT'; title?: string; comment?: string }) {
+  return requestJson<Record<string, unknown>>(`/api/v1/admin/reviews/${jobId}/article-title-decision`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
 export function reviewPdfUrl(jobId: string) {
   return `/api/v1/admin/reviews/${encodeURIComponent(jobId)}/pdf`;
 }
@@ -147,7 +186,7 @@ export function publishJob(jobId: string, expectedStateVersion: number) {
 
 export interface ManagedDocument {
   id: number; file_name: string; series_id: number; series_key: string; canonical_title: string;
-  document_version_no: number; latest_metadata_revision_id: number; approved_metadata_revision_id: number | null;
+  document_version_no: number; latest_metadata_revision_id: number | null; approved_metadata_revision_id: number | null;
   active_metadata_revision_id: number | null; title: string | null; document_code: string | null;
   issuing_org: string | null; owner_department: string | null; publish_date: string | null;
   status: string; metadata_status: string; request_id: string | null; request_type: string | null;
@@ -173,10 +212,19 @@ export interface ManagedDocumentDetail {
 }
 
 export interface PolicySeries { id: number; series_key: string; canonical_title: string; status: string; document_count: number }
-export interface IndexPublication { id: string; status: string; document_ids: number[]; index_run_id: number | null; alias_name: string; error_summary: string | null; can_retry: boolean; created_at: string; published_at: string | null }
+export interface ManagedDocumentPage { items: ManagedDocument[]; total: number; page: number; page_size: number }
+export interface IndexPublication { id: string; status: string; document_ids: number[]; index_run_id: number | null; base_index_run_id: number | null; snapshot_contract_version: string; alias_name: string; error_summary: string | null; can_retry: boolean; created_at: string; published_at: string | null }
 export interface IngestionBatch { id: string; name: string; status: string; file_count: number; created_at: string; completed_at: string | null }
 
-export const listManagedDocuments = () => requestJson<ManagedDocument[]>('/api/v1/admin/knowledge/documents');
+export const listManagedDocuments = (params?: { keyword?: string; metadata_status?: string; sort_by?: string; page?: number }) => {
+  const query = new URLSearchParams();
+  if (params?.keyword) query.set('keyword', params.keyword);
+  if (params?.metadata_status) query.set('metadata_status', params.metadata_status);
+  if (params?.sort_by) query.set('sort_by', params.sort_by);
+  query.set('page', String(params?.page ?? 1));
+  query.set('page_size', '10');
+  return requestJson<ManagedDocumentPage>(`/api/v1/admin/knowledge/documents?${query.toString()}`);
+};
 export const getManagedDocument = (documentId: number) => requestJson<ManagedDocumentDetail>(`/api/v1/admin/knowledge/documents/${documentId}/metadata`);
 export const listPolicySeries = () => requestJson<PolicySeries[]>('/api/v1/admin/knowledge/series');
 export const assignPolicySeries = (documentId: number, payload: { series_id: number | null; canonical_title?: string }) => requestJson<Record<string, unknown>>(`/api/v1/admin/knowledge/documents/${documentId}/series`, { method: 'PUT', body: JSON.stringify(payload) });

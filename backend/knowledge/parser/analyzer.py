@@ -29,6 +29,15 @@ PATTERNS = {
 }
 
 NORMATIVE_WORDS = ("应当", "必须", "不得", "严禁", "可以", "负责", "按照", "依照", "由", "为")
+ARTICLE_TITLE_HEURISTIC_MAX_LENGTH = 40
+ARTICLE_TITLE_STRONG_MAX_LENGTH = 80
+ARTICLE_SENTENCE_PUNCTUATION = re.compile(r"[。；;！？!?]")
+ARTICLE_NORMATIVE_CLAUSE = re.compile(
+    r"(?:应当|必须|不得|严禁|可以|负责|按照|依照|予以|由.{0,16}(?:负责|办理|实施))"
+)
+ARTICLE_LEAD_IN_CLAUSE = re.compile(
+    r"(?:有下列|包括下列|符合下列|按照下列|具体如下|规定如下|要求如下|事项如下)"
+)
 DOCUMENT_TYPES = ("办法", "细则", "规定", "规程", "规范", "通知",
                   "方案", "意见", "计划", "报告", "标准", "制度")
 ADDRESSEE_TOKENS = ("单位", "部门", "机关", "公司", "学会", "站", "局")
@@ -107,6 +116,46 @@ def _main_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         and block["block_type"] in {"paragraph", "table"}
         and block["clean_text"]
     ]
+
+
+def classify_article_remainder(rest: str, next_text: str) -> dict[str, Any]:
+    """判定“第X条”后的文字是条标题还是条文正文。
+
+    冒号与紧随子项构成强结构证据；普通短文本只作为待人工确认的启发式标题。
+    长正文、完整句子和规范性领起句始终按正文处理，避免结构证据误吞条文内容。
+    """
+
+    normalized = rest.strip()
+    next_is_item = any(
+        pattern.match(next_text)
+        for name, pattern in PATTERNS.items()
+        if name.startswith("item_")
+    )
+    has_sentence_punctuation = bool(
+        ARTICLE_SENTENCE_PUNCTUATION.search(normalized.rstrip("：:"))
+    )
+    has_normative_clause = bool(ARTICLE_NORMATIVE_CLAUSE.search(normalized))
+    has_lead_in_clause = bool(ARTICLE_LEAD_IN_CLAUSE.search(normalized))
+    if (
+        not next_is_item
+        or len(normalized) > ARTICLE_TITLE_STRONG_MAX_LENGTH
+        or has_sentence_punctuation
+        or has_normative_clause
+        or has_lead_in_clause
+    ):
+        return {"kind": "content", "title": None, "needs_review": False}
+    if normalized.endswith(("：", ":")):
+        return {
+            "kind": "strong",
+            "title": normalized.rstrip("：:").rstrip(),
+            "needs_review": False,
+        }
+    if (
+        len(normalized) <= ARTICLE_TITLE_HEURISTIC_MAX_LENGTH
+        and not any(word in normalized for word in NORMATIVE_WORDS)
+    ):
+        return {"kind": "heuristic", "title": normalized, "needs_review": True}
+    return {"kind": "content", "title": None, "needs_review": False}
 
 
 def extract_metadata(
@@ -438,17 +487,14 @@ def build_nodes(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         content: str | None = rest or None
         if decision["type"] in {"chapter", "section", "heading", "attachment"}:
             title, content = rest or None, None
-        elif decision["type"] == "article" and rest:
+        article_title_decision: dict[str, Any] | None = None
+        if decision["type"] == "article" and rest:
             next_text = main[index + 1]["clean_text"] if index + \
                 1 < len(main) else ""
-            looks_like_title = (
-                len(rest) <= 24
-                and not re.search(r"[。；;！？!?]$", rest)
-                and not any(word in rest for word in NORMATIVE_WORDS)
-                and any(pattern.match(next_text) for name, pattern in PATTERNS.items() if name.startswith("item_"))
-            )
-            if looks_like_title:
-                title, content = rest, None
+            article_title_decision = classify_article_remainder(rest, next_text)
+            if article_title_decision["title"]:
+                title, content = article_title_decision["title"], None
+                decision["rule"] = f"NODE_ARTICLE_TITLE_{article_title_decision['kind'].upper()}_V2"
 
         parent_path = parent["path"] if parent else ""
         path = f"{parent_path}/{decision['type']}_{index + 1}" if parent_path else f"{decision['type']}_{index + 1}"
@@ -474,8 +520,15 @@ def build_nodes(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "decision_method": decision["method"],
             "rule_id": decision["rule"],
             "candidate_types": decision.get("candidates", []),
-            "review_status": "pending" if decision["confidence"] < 0.85 else "confirmed",
-            "review_reason": "节点类型存在歧义" if decision["confidence"] < 0.85 else None,
+            "review_status": "pending" if (
+                decision["confidence"] < 0.85
+                or bool(article_title_decision and article_title_decision["needs_review"])
+            ) else "confirmed",
+            "review_reason": (
+                "条标题由结构启发式识别，请确认标题或改为条文正文"
+                if article_title_decision and article_title_decision["needs_review"]
+                else ("节点类型存在歧义" if decision["confidence"] < 0.85 else None)
+            ),
             "rank": rank,
         }
         nodes.append(node)
@@ -514,6 +567,15 @@ def validate_structure(
         if node["parser_confidence"] < 0.85:
             issues.append({"stage": "structure_validation", "issue_code": "LOW_STRUCTURE_CONFIDENCE", "severity": "review", "message": "节点类型需要人工确认",
                           "node_key": node["temp_key"], "details": {"confidence": node["parser_confidence"], "candidates": node["candidate_types"]}})
+        if node.get("rule_id") == "NODE_ARTICLE_TITLE_HEURISTIC_V2":
+            issues.append({
+                "stage": "structure_validation",
+                "issue_code": "NODE_ARTICLE_TITLE_HEURISTIC",
+                "severity": "review",
+                "message": "条标题由结构启发式识别，请人工确认标题或改为条文正文",
+                "node_key": node["temp_key"],
+                "details": {"title": node.get("title"), "node_number": node.get("node_number")},
+            })
 
     groups: dict[str | None, list[int]] = defaultdict(list)
     for node in nodes:

@@ -1,6 +1,7 @@
 """文件说明：验证 Platform 只通过公开 HTTP 契约调用 RAG 并透传查询范围。"""
 
 import asyncio
+import logging
 
 import httpx
 
@@ -8,7 +9,7 @@ from app.infrastructure.rag_api_client import RagApiClient, RagApiClientError
 from tests.test_chat_integration import response
 
 
-def test_rag_api_client_posts_query_scope_and_validates_response() -> None:
+def test_rag_api_client_posts_query_scope_and_validates_response(caplog) -> None:
     captured: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -20,13 +21,16 @@ def test_rag_api_client_posts_query_scope_and_validates_response() -> None:
     transport = httpx.MockTransport(handler)
     http_client = httpx.AsyncClient(base_url="http://rag.test", transport=transport)
     client = RagApiClient("http://ignored", client=http_client)
-    result = asyncio.run(client.query("历史规定", "platform-1", "HISTORICAL"))
+    with caplog.at_level(logging.INFO, logger="policy_platform.api.dependencies.rag_api"):
+        result = asyncio.run(client.query("内部敏感查询文本", "platform-1", "HISTORICAL"))
     asyncio.run(http_client.aclose())
 
     assert captured["path"] == "/v1/rag/query"
     assert '"query_scope":"HISTORICAL"' in str(captured["body"]).replace(" ", "")
     assert captured["request_id"] == "platform-1"
     assert result.contract_version == "rag_api_v1_1"
+    assert "dependency_call_completed" in caplog.text
+    assert "内部敏感查询文本" not in caplog.text
 
 
 def test_rag_api_client_preserves_public_error() -> None:

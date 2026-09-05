@@ -7,12 +7,16 @@ index 恢复输入顺序，并校验数量、维度、有限值和零范数。
 from __future__ import annotations
 
 import math
+import logging
 import time
 from typing import Sequence
 
 import requests
 
 from .config import EmbeddingContract
+
+
+LOGGER = logging.getLogger("policy_platform.worker.dependencies.embedding")
 
 
 class EmbeddingServiceError(RuntimeError):
@@ -56,7 +60,14 @@ class OpenAIEmbeddingClient:
 
         payload = {"model": self.contract.model, "input": values}
         last_error: Exception | None = None
+        operation_started = time.perf_counter()
         for attempt in range(self.max_retries + 1):
+            attempt_started = time.perf_counter()
+            status_code: int | None = None
+            LOGGER.info(
+                "event=dependency_call_started dependency=embedding operation=embed attempt=%d max_attempts=%d batch_size=%d",
+                attempt + 1, self.max_retries + 1, len(values),
+            )
             try:
                 response = self.session.post(
                     self.endpoint,
@@ -64,23 +75,44 @@ class OpenAIEmbeddingClient:
                     headers=self.headers,
                     timeout=self.timeout_seconds,
                 )
+                status_code = response.status_code
                 if response.status_code >= 500 or response.status_code == 429:
                     raise EmbeddingServiceError(
-                        f"Embedding 服务暂时失败：HTTP {response.status_code} {response.text[:500]}"
+                        f"Embedding服务暂时失败：HTTP {response.status_code}"
                     )
                 response.raise_for_status()
                 data = response.json()
-                return self._validate_response(data, len(values))
+                vectors = self._validate_response(data, len(values))
+                LOGGER.info(
+                    "event=dependency_call_completed dependency=embedding operation=embed attempt=%d status_code=%s batch_size=%d elapsed_ms=%d",
+                    attempt + 1, status_code, len(values), int((time.perf_counter() - attempt_started) * 1000),
+                )
+                return vectors
             except (requests.RequestException, ValueError, EmbeddingServiceError) as exc:
                 last_error = exc
                 # 4xx 契约错误不盲目重试，429 已在上面转为可重试错误。
+                retryable = True
                 if isinstance(exc, requests.HTTPError):
                     status = exc.response.status_code if exc.response is not None else None
                     if status is not None and 400 <= status < 500 and status != 429:
-                        break
+                        retryable = False
                 if attempt < self.max_retries:
-                    time.sleep(min(2**attempt, 4))
-        raise EmbeddingServiceError(f"Embedding 请求失败：{last_error}") from last_error
+                    delay_seconds = min(2**attempt, 4)
+                    if retryable:
+                        LOGGER.warning(
+                            "event=dependency_call_retry dependency=embedding operation=embed attempt=%d status_code=%s retry_in_ms=%d elapsed_ms=%d error_type=%s",
+                            attempt + 1, status_code, delay_seconds * 1000,
+                            int((time.perf_counter() - attempt_started) * 1000), type(exc).__name__,
+                        )
+                        time.sleep(delay_seconds)
+                        continue
+                break
+        LOGGER.error(
+            "event=dependency_call_failed dependency=embedding operation=embed attempts=%d batch_size=%d elapsed_ms=%d error_type=%s",
+            attempt + 1, len(values), int((time.perf_counter() - operation_started) * 1000),
+            type(last_error).__name__ if last_error else "UnknownError",
+        )
+        raise EmbeddingServiceError("Embedding请求失败，请查看Worker依赖日志") from last_error
 
     def _validate_response(self, data: object, expected_count: int) -> list[list[float]]:
         if not isinstance(data, dict) or not isinstance(data.get("data"), list):

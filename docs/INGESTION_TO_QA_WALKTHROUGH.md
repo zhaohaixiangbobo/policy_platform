@@ -1296,7 +1296,7 @@ $py = "D:\3-anaconda\envs\py312\python.exe"
 # 阶段一：导入受控目录
 & $py -m knowledge.cli import "D:\path\to\某制度.docx"
 
-# 阶段二：解析（--no-render 跳过 PDF 渲染，快很多；--auto-activate 直接置 active）
+# 阶段二：解析（--no-render 跳过 PDF 渲染，快很多）
 & $py -m knowledge.cli parse "某制度.docx" --no-render
 
 # 阶段三：解析复核
@@ -1304,8 +1304,8 @@ $py = "D:\3-anaconda\envs\py312\python.exe"
 & $py -m knowledge.cli review-parse --run-id 1 --target-type field --target-id 3 --action correct --corrected-value "2024-01-01"
 & $py -m knowledge.cli review-parse --run-id 1 --approve-run --reviewed-by local-admin
 
-# 阶段四：切块
-& $py -m knowledge.cli chunk --document-id 1 --activate
+# 阶段四：切块（生成后仍需阶段五显式批准）
+& $py -m knowledge.cli chunk --document-id 1
 & $py -m knowledge.cli chunk --all-active            # 全量重切
 
 # 阶段五：切块复核
@@ -1634,17 +1634,19 @@ severity = 'review'
 code     = 'NODE_ARTICLE_TITLE_HEURISTIC'
 ```
 
-这样它会出现在**解析复核页**，人工可以用现有的 `correct` 动作直接改 title（`parser/review.py` 已经支持 `target_type='node'`）。强证据层不插 issue，避免噪声。
+这样它会出现在**解析复核页**，人工可通过条标题专用审核接口确认、修改标题或恢复为条文正文。强证据层不插 issue，避免噪声。
 
-**② 升级 `template_version`。** 标题判定变了就是解析行为变了。不升版本会导致旧 ParseRun 与新 ParseRun 无法区分，而 `template_version` 又进 `evidence_uid`（`citation.py:36`）——升版后旧引用会正确地表现为「已不是当前版本」。
+**② 升级解析行为版本。** 标题判定属于 Parser 行为，已通过 `parser_version=0.1.4` 和 `article_title_rule_version=article_title_v2` 进入配置哈希；Chunk 检索模板没有变化，因此不修改 `retrieval_template_version`。
 
 **③ 回归验证要看下游。** 改完后不能只看 `policy_node.title`，要一直看到 `policy_chunk.heading_path`：
 
 ```powershell
 cd d:\2-code\policy-platform\backend
 $py = "D:\3-anaconda\envs\py312\python.exe"
-& $py -m knowledge.cli parse "某制度.docx" --no-render --auto-activate
-& $py -m knowledge.cli chunk --document-id <id> --activate
+& $py -m knowledge.cli parse "某制度.docx" --no-render
+& $py -m knowledge.cli review-parse --run-id <parse_run_id> --approve-run --reviewed-by <user_id>
+& $py -m knowledge.cli chunk --document-id <id>
+& $py -m knowledge.cli review-chunk --run-id <chunk_run_id> --approve-run --reviewed-by <user_id>
 # 然后查 heading_path 是否包含正确条标题
 cd d:\2-code\policy-platform; D:\3-anaconda\envs\py312\python.exe -c "import sqlite3;c=sqlite3.connect(r'var/knowledge/policy_parser.db');[print(r) for r in c.execute('select chunk_key,heading_path from policy_chunk where chunk_run_id=(select active_chunk_run_id from policy_document where id=1)')]"
 ```

@@ -83,6 +83,21 @@ class KnowledgeManagementService:
         with ParseReviewService(self.paths.database_path) as service:
             return service.decide(run_id=run_id, target_type=target_type, target_id=target_id, action=action, reviewed_by=reviewer_user_id, comment=comment, corrected_value=corrected_value)
 
+    def decide_parse_items(self, run_id: int, target_type: str, target_ids: list[int], action: str, reviewer_user_id: str, comment: str | None) -> dict[str, Any]:
+        """原子批量处置当前ParseRun中的同类待审对象。"""
+
+        with ParseReviewService(self.paths.database_path) as service:
+            return service.decide_many(run_id=run_id, target_type=target_type, target_ids=target_ids, action=action, reviewed_by=reviewer_user_id, comment=comment)
+
+    def decide_parse_article_title(self, run_id: int, node_id: int, mode: str, reviewer_user_id: str, title: str | None, comment: str | None) -> dict[str, Any]:
+        """确认启发式条标题，或将对应文字恢复为条文正文。"""
+
+        with ParserReviewService(self.paths.database_path) as service:
+            return service.decide_article_title(
+                run_id=run_id, node_id=node_id, mode=mode,
+                reviewed_by=reviewer_user_id, title=title, comment=comment,
+            )
+
     def ensure_metadata_draft(
         self,
         document_id: int,
@@ -130,13 +145,23 @@ class KnowledgeManagementService:
         with ChunkReviewService(self.paths.database_path) as service:
             return service.decide(chunk_run_id=run_id, target_type=target_type, target_id=target_id, action=action, reviewed_by=reviewer_user_id, comment=comment)
 
+    def decide_chunk_items(self, run_id: int, target_ids: list[int], reviewer_user_id: str, comment: str | None) -> dict[str, Any]:
+        """原子批量接受当前ChunkRun中的普通质量问题。"""
+
+        with ChunkReviewService(self.paths.database_path) as service:
+            return service.decide_many(chunk_run_id=run_id, target_ids=target_ids, reviewed_by=reviewer_user_id, comment=comment)
+
     def reject_chunk_run(self, run_id: int, reviewer_user_id: str, comment: str | None) -> dict[str, Any]:
         """在知识库保留可审计的ChunkRun驳回结果。"""
 
         with ChunkReviewService(self.paths.database_path) as service:
             return service.reject_run(run_id, reviewer_user_id, comment)
 
-    def build_index_run(self, required_document_ids: list[int] | None = None) -> dict[str, Any]:
+    def build_index_run(
+        self,
+        required_document_ids: list[int] | None = None,
+        frozen_sources: list[dict[str, int]] | None = None,
+    ) -> dict[str, Any]:
         """构建并核验IndexRun，不切换alias，等待管理员发布。"""
 
         endpoint = os.getenv("POLICY_EMBEDDING_URL", "http://10.9.7.1:8001/v1/embeddings")
@@ -168,7 +193,26 @@ class KnowledgeManagementService:
             return indexer.build(
                 activate=False,
                 required_document_ids=required_document_ids,
+                frozen_sources=frozen_sources,
             )
+
+    def active_index_snapshot(self) -> dict[str, Any]:
+        """读取当前Alias对应IndexRun的完整来源，作为下一次发布的稳定基线。"""
+
+        with IndexDatabase(self.paths.database_path) as database:
+            profile = database.connection.execute(
+                "SELECT active_index_run_id FROM index_profile WHERE profile_name=?",
+                (IndexConfig().profile_name,),
+            ).fetchone()
+            run_id = int(profile["active_index_run_id"]) if profile and profile["active_index_run_id"] is not None else None
+            if run_id is None:
+                return {"index_run_id": None, "sources": []}
+            run = database.connection.execute(
+                "SELECT status,activation_status FROM index_run WHERE id=?", (run_id,)
+            ).fetchone()
+            if run is None or run["status"] != "succeeded" or run["activation_status"] != "active":
+                raise ValueError("当前active IndexRun状态异常，不能创建下一次发布请求")
+            return {"index_run_id": run_id, "sources": self.index_run_sources(run_id)}
 
     def index_run_sources(self, run_id: int) -> list[dict[str, Any]]:
         """返回IndexRun冻结的精确来源版本，供Platform发布编排核对绑定。"""
@@ -217,9 +261,7 @@ class KnowledgeManagementService:
             }
             if len(run_ids) != 1:
                 raise ValueError(f"制度 {document_id} 的ParseRun、ChunkRun和元数据版本不一致")
-            if row["chunk_status"] != "succeeded" or row["chunk_review_status"] not in {
-                "approved", "not_required"
-            }:
+            if row["chunk_status"] != "succeeded" or row["chunk_review_status"] != "approved":
                 raise ValueError(f"制度 {document_id} 的active ChunkRun尚未审核通过")
             return {
                 "document_id": int(row["document_id"]),

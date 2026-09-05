@@ -80,6 +80,7 @@ class PolicyIndexer:
         *,
         activate: bool = True,
         required_document_ids: Sequence[int] | None = None,
+        frozen_sources: Sequence[dict[str, int]] | None = None,
     ) -> dict[str, Any]:
         """构建或幂等复用索引，必要时发布为 active。"""
 
@@ -87,7 +88,11 @@ class PolicyIndexer:
             self.config.profile_name, self.config.alias_name
         )
         self._reconcile_switching_run(int(profile["id"]))
-        sources = self.db.freeze_active_sources(required_document_ids)
+        sources = (
+            self.db.freeze_exact_sources(frozen_sources)
+            if frozen_sources is not None
+            else self.db.freeze_active_sources(required_document_ids)
+        )
         manifest_hash = self.db.source_manifest_hash(sources)
         collection_name = self.config.collection_name(
             manifest_hash, self.contract.contract_hash

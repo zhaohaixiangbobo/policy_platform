@@ -115,6 +115,50 @@ class ChunkReviewService:
             )
         return self.refresh_state(chunk_run_id)
 
+    def decide_many(
+        self,
+        *,
+        chunk_run_id: int,
+        target_ids: list[int],
+        reviewed_by: str,
+        comment: str | None,
+    ) -> dict[str, Any]:
+        """原子批量接受ChunkRun普通问题；Error级问题始终留给返工流程。"""
+
+        ids = list(dict.fromkeys(int(value) for value in target_ids))
+        if not ids or len(ids) > 500:
+            raise ValueError("批量审核必须包含1至500个对象")
+        if not (comment or "").strip():
+            raise ValueError("批量接受普通问题必须填写统一接受理由")
+        run = self._run(chunk_run_id)
+        before_rows = [self._target(chunk_run_id, "chunk_issue", target_id) for target_id in ids]
+        for before in before_rows:
+            if before["resolved"] or before["severity"] == "error":
+                raise ValueError(f"问题 {before['id']} 不是可批量接受的普通待处理问题")
+        now = utc_now()
+        with self.db.transaction():
+            for before in before_rows:
+                target_id = int(before["id"])
+                self.db.connection.execute(
+                    "UPDATE chunk_validation_issue SET resolved=1,resolved_by=?,resolved_at=? WHERE id=? AND chunk_run_id=?",
+                    (reviewed_by, now, target_id, chunk_run_id),
+                )
+                after = self._target(chunk_run_id, "chunk_issue", target_id)
+                self.db.connection.execute(
+                    """
+                    INSERT INTO review_decision (
+                        parse_run_id,target_type,target_id,action,old_value_json,
+                        new_value_json,comment,reviewed_by,reviewed_at
+                    ) VALUES (?, 'chunk_issue', ?, 'ignore', ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        int(run["parse_run_id"]), target_id,
+                        json.dumps(before, ensure_ascii=False),
+                        json.dumps(after, ensure_ascii=False), comment, reviewed_by, now,
+                    ),
+                )
+        return {**self.refresh_state(chunk_run_id), "processed_count": len(ids)}
+
     def reject_run(
         self, chunk_run_id: int, reviewed_by: str, comment: str | None = None
     ) -> dict[str, Any]:

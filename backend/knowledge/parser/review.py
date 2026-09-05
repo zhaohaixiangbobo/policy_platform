@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .analyzer import PATTERNS
 from .database import ParserDatabase, utc_now
 
 
@@ -63,6 +64,42 @@ class ReviewService:
             raise ValueError(f"ParseRun {run_id} 中不存在 {target_type} {target_id}")
         return dict(row)
 
+    def _resolve_article_title_issue(
+        self, run_id: int, node_id: int, reviewed_by: str, reviewed_at: str
+    ) -> None:
+        """节点结论确定后同步关闭其启发式标题问题，避免重复处置。"""
+
+        self.db.connection.execute(
+            """
+            UPDATE validation_issue
+            SET resolved=1,resolved_by=?,resolved_at=?
+            WHERE parse_run_id=? AND node_id=?
+              AND issue_code='NODE_ARTICLE_TITLE_HEURISTIC' AND resolved=0
+            """,
+            (reviewed_by, reviewed_at, run_id, node_id),
+        )
+
+    def _rebuild_path_text(self, run_id: int, updated_at: str) -> None:
+        """按父子顺序重算当前运行的路径文字，使标题调整同步影响后代。"""
+
+        rows = self.db.connection.execute(
+            """
+            SELECT id,parent_id,node_type,node_number,title,content
+            FROM policy_node WHERE parse_run_id=? ORDER BY level,order_no,id
+            """,
+            (run_id,),
+        ).fetchall()
+        path_by_id: dict[int, str] = {}
+        for row in rows:
+            label = row["title"] or row["node_number"] or (row["content"] or "")[:32] or row["node_type"]
+            parent_path = path_by_id.get(int(row["parent_id"])) if row["parent_id"] else None
+            path_text = f"{parent_path} > {label}" if parent_path else str(label)
+            path_by_id[int(row["id"])] = path_text
+            self.db.connection.execute(
+                "UPDATE policy_node SET path_text=?,updated_at=? WHERE id=? AND parse_run_id=?",
+                (path_text, updated_at, int(row["id"]), run_id),
+            )
+
     def decide(
         self,
         *,
@@ -81,6 +118,8 @@ class ReviewService:
         if not reviewed_by.strip():
             raise ValueError("reviewed_by 不能为空")
         before = self._target(run_id, target_type, target_id)
+        if target_type == "issue" and before["severity"] == "error" and action != "reject":
+            raise ValueError("Error级问题不能直接确认或忽略，必须驳回并修正后重跑")
         now = utc_now()
         with self.db.transaction():
             if target_type == "issue":
@@ -111,6 +150,8 @@ class ReviewService:
                         f"UPDATE {table} SET review_status=? WHERE id=? AND parse_run_id=?",
                         (status, target_id, run_id),
                     )
+                    if target_type == "node" and action == "confirm":
+                        self._resolve_article_title_issue(run_id, target_id, reviewed_by, now)
             after = self._target(run_id, target_type, target_id)
             self.db.connection.execute(
                 """
@@ -132,6 +173,143 @@ class ReviewService:
                 ),
             )
         return self.refresh_state(run_id)
+
+    def decide_article_title(
+        self,
+        *,
+        run_id: int,
+        node_id: int,
+        mode: str,
+        reviewed_by: str,
+        title: str | None = None,
+        comment: str | None = None,
+    ) -> dict[str, Any]:
+        """人工确认启发式条标题，或将其恢复为条文正文。"""
+
+        if mode not in {"TITLE", "CONTENT"}:
+            raise ValueError("条标题审核模式必须为TITLE或CONTENT")
+        if not reviewed_by.strip():
+            raise ValueError("reviewed_by不能为空")
+        run = self.db.connection.execute(
+            "SELECT status,review_status FROM parse_run WHERE id=?", (run_id,)
+        ).fetchone()
+        if run is None:
+            raise ValueError(f"ParseRun不存在：{run_id}")
+        if run["review_status"] in {"approved", "rejected"} or run["status"] == "failed":
+            raise ValueError("已完成或失败的ParseRun不可原位修改，请创建派生修订")
+        before = self._target(run_id, "node", node_id)
+        if before["node_type"] != "article" or before["rule_id"] != "NODE_ARTICLE_TITLE_HEURISTIC_V2":
+            raise ValueError("当前节点不是待确认的启发式条标题")
+        if before["review_status"] != "pending":
+            raise ValueError("当前条标题已经处理")
+
+        if mode == "TITLE":
+            selected_title = (title if title is not None else before["title"] or "").strip().rstrip("：:").rstrip()
+            if not selected_title:
+                raise ValueError("确认条标题时标题不能为空")
+            content = None
+            rule_id = "NODE_ARTICLE_TITLE_HUMAN_V1"
+            action = "confirm_article_title"
+        else:
+            source_text = str(before["normalized_content"] or before["raw_text"] or "").strip()
+            match = PATTERNS["article"].match(source_text)
+            content = match.group(2).strip() if match else source_text
+            if not content:
+                raise ValueError("无法从节点原文恢复条文正文")
+            selected_title = None
+            rule_id = "NODE_ARTICLE_CONTENT_HUMAN_V1"
+            action = "mark_article_content"
+
+        now = utc_now()
+        with self.db.transaction():
+            self.db.connection.execute(
+                """
+                UPDATE policy_node
+                SET title=?,content=?,decision_method='human',rule_id=?,
+                    review_status='confirmed',review_reason=NULL,updated_at=?
+                WHERE id=? AND parse_run_id=?
+                """,
+                (selected_title, content, rule_id, now, node_id, run_id),
+            )
+            self._rebuild_path_text(run_id, now)
+            self._resolve_article_title_issue(run_id, node_id, reviewed_by, now)
+            after = self._target(run_id, "node", node_id)
+            self.db.connection.execute(
+                """
+                INSERT INTO review_decision (
+                    parse_run_id,target_type,target_id,action,old_value_json,
+                    new_value_json,comment,reviewed_by,reviewed_at
+                ) VALUES (?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    run_id, "node", node_id, action,
+                    json.dumps(before, ensure_ascii=False),
+                    json.dumps(after, ensure_ascii=False),
+                    comment, reviewed_by, now,
+                ),
+            )
+        return self.refresh_state(run_id)
+
+    def decide_many(
+        self,
+        *,
+        run_id: int,
+        target_type: str,
+        target_ids: list[int],
+        action: str,
+        reviewed_by: str,
+        comment: str | None = None,
+    ) -> dict[str, Any]:
+        """原子批量确认节点或接受普通问题，任一对象不合法时整批不写入。"""
+
+        ids = list(dict.fromkeys(int(value) for value in target_ids))
+        if not ids or len(ids) > 500:
+            raise ValueError("批量审核必须包含1至500个对象")
+        if target_type == "node" and action != "confirm":
+            raise ValueError("节点批量操作只支持确认")
+        if target_type == "issue" and action != "ignore":
+            raise ValueError("普通问题批量操作只支持接受")
+        if target_type not in {"node", "issue"}:
+            raise ValueError("ParseRun批量操作只支持节点或普通问题")
+        if target_type == "issue" and not (comment or "").strip():
+            raise ValueError("批量接受普通问题必须填写统一接受理由")
+        before_rows = [self._target(run_id, target_type, target_id) for target_id in ids]
+        for before in before_rows:
+            if target_type == "node" and before["review_status"] != "pending":
+                raise ValueError(f"Node {before['id']} 已处理，不能重复批量确认")
+            if target_type == "issue" and (before["resolved"] or before["severity"] == "error"):
+                raise ValueError(f"问题 {before['id']} 不是可批量接受的普通待处理问题")
+
+        now = utc_now()
+        with self.db.transaction():
+            for before in before_rows:
+                target_id = int(before["id"])
+                if target_type == "node":
+                    self.db.connection.execute(
+                        "UPDATE policy_node SET review_status='confirmed' WHERE id=? AND parse_run_id=?",
+                        (target_id, run_id),
+                    )
+                    self._resolve_article_title_issue(run_id, target_id, reviewed_by, now)
+                else:
+                    self.db.connection.execute(
+                        "UPDATE validation_issue SET resolved=1,resolved_by=?,resolved_at=? WHERE id=? AND parse_run_id=?",
+                        (reviewed_by, now, target_id, run_id),
+                    )
+                after = self._target(run_id, target_type, target_id)
+                self.db.connection.execute(
+                    """
+                    INSERT INTO review_decision (
+                        parse_run_id,target_type,target_id,action,old_value_json,
+                        new_value_json,comment,reviewed_by,reviewed_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        run_id, target_type, target_id, action,
+                        json.dumps(before, ensure_ascii=False),
+                        json.dumps(after, ensure_ascii=False), comment, reviewed_by, now,
+                    ),
+                )
+        return {**self.refresh_state(run_id), "processed_count": len(ids)}
 
     def _pending_counts(self, run_id: int) -> dict[str, int]:
         queries = {

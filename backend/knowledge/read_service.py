@@ -66,7 +66,8 @@ class KnowledgeReadService:
                     """
                     SELECT id,parent_id,node_type,node_number,title,content AS text,
                            path_text,level,order_no,page_start,page_end,
-                           parser_confidence,review_status,review_reason
+                           parser_confidence,decision_method,rule_id,
+                           review_status,review_reason
                     FROM policy_node WHERE parse_run_id=? ORDER BY order_no,id
                     """,
                     (run_id,),

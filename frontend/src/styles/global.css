@@ -1997,10 +1997,19 @@ body {
 .review-workbench { display: grid; grid-template-columns: 260px minmax(620px, 1fr) 300px; gap: 14px; min-height: 650px; }
 .review-workbench .ant-card { height: 100%; }
 .review-queue .ant-card-body { padding: 8px; }
+.review-queue .ant-input-search { margin-bottom: 10px; }
+.review-queue .ant-segmented { margin-bottom: 10px; }
 .review-type-switch { margin-bottom: 10px; }
+.review-queue-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.review-queue-filters .ant-select { width: 100%; }
+.review-queue-total { display: block; padding: 2px 4px 8px; }
+.review-queue .ant-list { max-height: 520px; overflow-y: auto; }
+.review-queue .ant-pagination { display: flex; justify-content: center; margin: 10px 0 2px; }
 .review-queue-item { display: grid; gap: 7px; width: 100%; padding: 13px 12px; text-align: left; background: transparent; border: 0; border-radius: 8px; cursor: pointer; }
 .review-queue-item.active { color: #1768ff; background: #edf4ff; }
 .review-queue-item > span { color: #758298; font-size: 12px; }
+.review-queue-item > strong { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.review-queue-item > small { overflow: hidden; color: #8995a8; text-overflow: ellipsis; white-space: nowrap; }
 .review-document-meta { padding-bottom: 18px; border-bottom: 1px solid #edf0f5; }
 .review-empty-preview { display: grid; min-height: 340px; padding: 48px; color: #7a879b; text-align: center; place-items: center; align-content: center; }
 .review-empty-preview > .anticon { margin-bottom: 12px; font-size: 42px; }

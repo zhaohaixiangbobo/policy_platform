@@ -11,6 +11,7 @@ from knowledge.config import KnowledgePaths
 from knowledge.management import KnowledgeManagementService
 from knowledge.metadata_service import KnowledgeMetadataService, MetadataConflictError
 from knowledge.indexing.config import EmbeddingContract, IndexConfig
+from knowledge.indexing.database import IndexDatabase
 from knowledge.indexing.indexer import PolicyIndexer
 from knowledge.parser.database import ParserDatabase
 from knowledge.parser.review import ReviewService as ParseReviewService
@@ -86,6 +87,53 @@ def test_initial_metadata_draft_uses_upload_declaration() -> None:
         )
         assert draft["status"] == "repealed"
         assert draft["lifecycle_status"] == "DRAFT"
+
+
+def test_not_required_chunk_run_cannot_enter_formal_publication() -> None:
+    """零问题ChunkRun没有人工批准记录时，active指针也不能绕过发布门禁。"""
+
+    runtime_root = Path(os.environ["POLICY_TEST_RUNTIME_ROOT"]).resolve()
+    paths = KnowledgePaths(runtime_root / uuid4().hex / "knowledge")
+    KnowledgeManagementService(paths).initialize_empty_baseline()
+    document_id = _insert_reviewable_document(paths, "待审核制度", "not-required-chunk")
+    with KnowledgeMetadataService(paths.database_path) as metadata:
+        draft = metadata.ensure_draft(
+            document_id, "uploader", source_type="PARSE_EXTRACTED",
+            initial_document_status="effective",
+        )
+        revision_id = int(draft["id"])
+        metadata.update_draft(document_id, revision_id, {
+            "issuing_org": "测试机构", "owner_department": "测试部门",
+            "publish_date": "2026-09-05", "status": "effective",
+        })
+        metadata.submit(document_id, revision_id)
+        metadata.review(document_id, revision_id, True, "reviewer", "元数据通过")
+    now = "2026-09-05T00:00:00+00:00"
+    with sqlite3.connect(paths.database_path) as connection:
+        parse_run_id = connection.execute(
+            "SELECT active_parse_run_id FROM policy_document WHERE id=?", (document_id,)
+        ).fetchone()[0]
+        cursor = connection.execute(
+            """
+            INSERT INTO chunk_run (
+                document_id,parse_run_id,chunker_version,strategy,config_json,config_hash,
+                status,review_status,source_scope,started_at,created_at
+            ) VALUES (?,?,'test','test','{}','not-required','succeeded','not_required','active',?,?)
+            """,
+            (document_id, parse_run_id, now, now),
+        )
+        chunk_run_id = int(cursor.lastrowid)
+        connection.execute(
+            "UPDATE policy_document SET active_chunk_run_id=? WHERE id=?",
+            (chunk_run_id, document_id),
+        )
+
+    management = KnowledgeManagementService(paths)
+    with pytest.raises(ValueError, match="active ChunkRun尚未审核通过"):
+        management.publication_source(document_id, revision_id)
+    with IndexDatabase(paths.database_path) as database:
+        with pytest.raises(ValueError, match="尚未通过审核"):
+            database.freeze_active_sources([document_id])
 
 
 def test_policy_document_is_a_version_under_policy_series() -> None:

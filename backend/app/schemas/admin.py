@@ -114,15 +114,43 @@ class ReviewItemDecisionRequest(BaseModel):
     corrected_value: str | None = Field(default=None, max_length=5000)
 
 
+class ReviewBatchDecisionRequest(BaseModel):
+    target_type: Literal["node", "issue", "chunk_issue"]
+    target_ids: list[int] = Field(min_length=1, max_length=500)
+    action: Literal["confirm", "ignore"]
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class ReviewArticleTitleDecisionRequest(BaseModel):
+    node_id: int = Field(ge=1)
+    mode: Literal["TITLE", "CONTENT"]
+    title: str | None = Field(default=None, max_length=1000)
+    comment: str | None = Field(default=None, max_length=2000)
+
+
 class ReviewQueueItem(BaseModel):
     target_type: Literal["PARSE_RUN", "CHUNK_RUN"]
     target_id: str
     job_id: str
     document_id: int | None
     title: str
+    document_code: str | None
     state: str
     issue_count: int
+    review_status: str
+    processing_status: Literal["PENDING", "PROCESSED"]
+    review_outcome: str | None
+    display_state: Literal["ACTION_REQUIRED", "READY_TO_SUBMIT", "PASS", "PASS_WITH_WARNING", "REJECT", "FAILED"]
     created_at: datetime
+    updated_at: datetime
+
+
+class ReviewQueuePage(BaseModel):
+    items: list[ReviewQueueItem]
+    total: int
+    page: int
+    page_size: Literal[10]
+    counts: dict[str, int]
 
 
 class ReviewDetail(BaseModel):

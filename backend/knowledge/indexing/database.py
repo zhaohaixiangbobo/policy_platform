@@ -233,7 +233,7 @@ class IndexDatabase:
                 raise ValueError(f"文档 {row['document_id']} 的 active ParseRun/ChunkRun 已失配")
             if row["status"] != "succeeded" or row["source_scope"] != "active":
                 raise ValueError(f"ChunkRun {row['active_chunk_run_id']} 不是正式成功运行")
-            if row["review_status"] not in {"approved", "not_required"}:
+            if row["review_status"] != "approved":
                 raise ValueError(f"ChunkRun {row['active_chunk_run_id']} 尚未通过审核")
 
             chunks = self.connection.execute(
@@ -282,6 +282,115 @@ class IndexDatabase:
                     "source_digest": sha256_text(canonical_json(digest_input)),
                 }
             )
+        return sources
+
+    def freeze_exact_sources(
+        self, expected_sources: Sequence[dict[str, int]]
+    ) -> list[dict[str, Any]]:
+        """按Platform冻结清单逐项取数，既不补入新制度，也不静默遗漏基线制度。"""
+
+        normalized = sorted(
+            (
+                {
+                    "document_id": int(source["document_id"]),
+                    "parse_run_id": int(source["parse_run_id"]),
+                    "chunk_run_id": int(source["chunk_run_id"]),
+                    "metadata_revision_id": int(source["metadata_revision_id"]),
+                }
+                for source in expected_sources
+            ),
+            key=lambda item: item["document_id"],
+        )
+        if not normalized:
+            raise ValueError("精确发布快照不能为空")
+        if len({item["document_id"] for item in normalized}) != len(normalized):
+            raise ValueError("精确发布快照包含重复制度")
+
+        sources: list[dict[str, Any]] = []
+        for expected in normalized:
+            row = self.connection.execute(
+                """
+                SELECT pd.id AS document_id,pd.active_parse_run_id,
+                       pd.active_chunk_run_id,pd.approved_metadata_revision_id,
+                       mr.title AS document_title,mr.document_code,
+                       mr.status AS document_status,mr.confidentiality_level,
+                       mr.authority_level,mr.lifecycle_status,
+                       mr.parse_run_id AS metadata_parse_run_id,
+                       cr.parse_run_id,cr.status,cr.review_status,cr.source_scope
+                FROM policy_document pd
+                JOIN chunk_run cr ON cr.id=? AND cr.document_id=pd.id
+                JOIN document_metadata_revision mr ON mr.id=? AND mr.document_id=pd.id
+                WHERE pd.id=?
+                """,
+                (
+                    expected["chunk_run_id"],
+                    expected["metadata_revision_id"],
+                    expected["document_id"],
+                ),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"制度 {expected['document_id']} 的冻结来源已不存在")
+            actual = (
+                int(row["active_parse_run_id"]) if row["active_parse_run_id"] is not None else None,
+                int(row["active_chunk_run_id"]) if row["active_chunk_run_id"] is not None else None,
+                int(row["approved_metadata_revision_id"]) if row["approved_metadata_revision_id"] is not None else None,
+            )
+            wanted = (
+                expected["parse_run_id"], expected["chunk_run_id"],
+                expected["metadata_revision_id"],
+            )
+            if actual != wanted:
+                raise ValueError(
+                    f"制度 {expected['document_id']} 的审核来源已变化：expected={wanted}, actual={actual}"
+                )
+            if int(row["parse_run_id"]) != expected["parse_run_id"] or int(row["metadata_parse_run_id"]) != expected["parse_run_id"]:
+                raise ValueError(f"制度 {expected['document_id']} 的ParseRun来源不一致")
+            if row["lifecycle_status"] not in {"APPROVED", "PUBLISHED"}:
+                raise ValueError(f"元数据修订 {expected['metadata_revision_id']} 尚未审核通过")
+            if row["status"] != "succeeded" or row["source_scope"] != "active":
+                raise ValueError(f"ChunkRun {expected['chunk_run_id']} 不是正式成功运行")
+            if row["review_status"] != "approved":
+                raise ValueError(f"ChunkRun {expected['chunk_run_id']} 尚未通过审核")
+
+            chunks = self.connection.execute(
+                """
+                SELECT id,chunk_key,retrieval_text_hash,parent_chunk_id,
+                       chunk_type,path_text,page_start,page_end
+                FROM policy_chunk
+                WHERE chunk_run_id=? AND is_retrievable=1 AND chunk_role='retrieval'
+                ORDER BY chunk_index
+                """,
+                (expected["chunk_run_id"],),
+            ).fetchall()
+            if not chunks:
+                raise ValueError(f"ChunkRun {expected['chunk_run_id']} 没有可检索 Chunk")
+            digest_input = {
+                "document_payload": {
+                    "document_title": row["document_title"],
+                    "document_code": row["document_code"],
+                    "document_status": row["document_status"],
+                    "confidentiality_level": row["confidentiality_level"],
+                    "authority_level": row["authority_level"],
+                },
+                "chunks": [
+                    {
+                        "chunk_id": int(chunk["id"]),
+                        "chunk_key": str(chunk["chunk_key"]),
+                        "retrieval_text_hash": str(chunk["retrieval_text_hash"]),
+                        "parent_chunk_id": chunk["parent_chunk_id"],
+                        "chunk_type": chunk["chunk_type"],
+                        "path_text": chunk["path_text"],
+                        "page_start": chunk["page_start"],
+                        "page_end": chunk["page_end"],
+                    }
+                    for chunk in chunks
+                ],
+            }
+            sources.append({
+                **expected,
+                "retrievable_count": len(chunks),
+                "source_digest": sha256_text(canonical_json(digest_input)),
+            })
         return sources
 
     @staticmethod

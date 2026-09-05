@@ -304,6 +304,11 @@ class IndexPublicationRequest(Base):
     __tablename__ = "index_publication_request"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_text)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT")
+    # 新发布请求必须冻结完整基线与本次变更；旧请求保留 legacy 标记且不可重试。
+    snapshot_contract_version: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="legacy"
+    )
+    base_index_run_id: Mapped[int | None] = mapped_column(Integer)
     source_document_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     index_run_id: Mapped[int | None] = mapped_column(Integer)
     alias_name: Mapped[str] = mapped_column(String(200), nullable=False, default="policy_platform_dense_active")
@@ -327,6 +332,7 @@ class IndexPublicationSource(Base):
     job_id: Mapped[str | None] = mapped_column(
         ForeignKey("ingestion_job.id", ondelete="RESTRICT")
     )
+    source_role: Mapped[str] = mapped_column(String(20), nullable=False, default="CHANGE")
     document_id: Mapped[int] = mapped_column(Integer, nullable=False)
     parse_run_id: Mapped[int] = mapped_column(Integer, nullable=False)
     chunk_run_id: Mapped[int] = mapped_column(Integer, nullable=False)

@@ -54,7 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
     parse_command = commands.add_parser("parse", help="创建ParseRun")
     parse_command.add_argument("input", type=Path)
     parse_command.add_argument("--no-render", action="store_true")
-    parse_command.add_argument("--auto-activate", action="store_true")
+    parse_command.add_argument(
+        "--auto-activate", action="store_true",
+        help="兼容参数，正式激活已禁用；请使用review-parse显式批准",
+    )
 
     parse_review = commands.add_parser("review-parse", help="审核ParseRun")
     parse_review.add_argument("--run-id", type=int, required=True)
@@ -72,7 +75,10 @@ def build_parser() -> argparse.ArgumentParser:
     selector.add_argument("--document-id", type=int)
     selector.add_argument("--parse-run-id", type=int)
     chunk_command.add_argument("--allow-unreviewed", action="store_true")
-    chunk_command.add_argument("--activate", action="store_true")
+    chunk_command.add_argument(
+        "--activate", action="store_true",
+        help="兼容参数，正式激活已禁用；请使用review-chunk显式批准",
+    )
 
     chunk_review = commands.add_parser("review-chunk", help="审核ChunkRun")
     chunk_review.add_argument("--run-id", type=int, required=True)

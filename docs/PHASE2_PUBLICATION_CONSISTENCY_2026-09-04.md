@@ -4,12 +4,13 @@
 
 ## 1. 最终规则
 
-1. 每个索引发布请求在 `index_publication_source` 中冻结 `document_id`、`parse_run_id`、
-   `chunk_run_id` 和 `metadata_revision_id`；首次入库同时绑定 `job_id`，纯元数据修订不制造虚构 Job。
+1. 每个新索引发布请求使用 `exact_snapshot_v2` 契约，在 `index_publication_source` 中冻结
+   当前 active IndexRun 的完整基线和本次选中变更，并保存 `document_id`、`parse_run_id`、
+   `chunk_run_id`、`metadata_revision_id`、`source_role`；首次入库同时绑定 `job_id`，纯元数据修订不制造虚构 Job。
 2. Worker 只推进发布请求明确绑定的 Job。绑定 Job 不是预期状态时，在调用索引构建或 Alias
    切换前失败，禁止其他失败任务搭车上线。
-3. IndexRun 构建完成后，Worker 将实际 `index_run_source` 与全部冻结来源逐项比较。任一版本不一致，
-   发布请求失败且不得进入确认发布。
+3. IndexRun 只按冻结清单取数，不再扫描全部当前就绪文档。构建完成后，Worker 将实际
+   `index_run_source` 与完整冻结集合做双向比较；缺少、额外或版本不一致都会失败，不得进入确认发布。
 4. 只有 Alias 切换并回读核验成功，发布请求、对应元数据审核请求和绑定 Job 才进入 `PUBLISHED`。
 5. 失败请求通过原请求重试，保留冻结来源和审计链，不新建一份语义相同的发布请求。
 
@@ -55,7 +56,8 @@
 
 ## 5. 本次实际数据结果
 
-- Platform Alembic 已升级到 `0005_index_publication_job`。
+- Platform Alembic 已升级到 `0006_exact_publication_snapshot`。历史发布请求保留 `legacy` 标记并只读展示，
+  不允许按新流程重试。
 - 显式知识迁移已登记，当前没有需要迁移的历史正式文档，计数为 0。
 - doc 8 的 Job `ee8311b5-840d-4e02-b714-c53e7c3b9e4a` 已依据 active IndexRun 5
   的精确来源，从 `FAILED` 协调为 `PUBLISHED`，并补齐 `index_run_id=5` 和发布来源绑定。
@@ -71,3 +73,11 @@ Worker 记录任务、文档和 Run 标识、阶段、耗时、错误码及重�
 
 本次只执行了定点后端测试、Python 编译检查、前端类型检查/构建以及修复后的只读数据库核对；
 没有执行真实 Embedding、Qdrant、Alias、压力或长时间稳定性测试。
+
+## 7. 治理与审核交互规则
+
+- 元数据草稿的主操作为“保存并提交审核”：先保存当前表单值，再提交生命周期，提交校验失败时已填写内容仍然保留。
+- 审核运行按“待处理/已处理”和“解析/分块”两个维度切换；已完成运行显示通过、警告通过或驳回结论。
+- 批量操作只作用于一个当前运行：待确认节点可批量确认，普通警告填写统一理由后可批量接受；Error
+  阻断问题不进入批量接受，任一目标不合法时整批回滚。
+- 制度治理支持名称、文号、机构、责任部门等文本检索，支持元数据状态筛选和治理优先级排序，固定每页 10 条。

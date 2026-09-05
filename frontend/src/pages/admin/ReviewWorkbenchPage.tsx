@@ -2,11 +2,11 @@
  * 文件说明：展示真实ParseRun/ChunkRun详情、质量问题、PDF页码和标准审核决策。
  */
 import { ArrowRightOutlined, CheckCircleOutlined, CloseCircleOutlined, FileSearchOutlined, ReloadOutlined, WarningOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Empty, Form, Input, InputNumber, List, Modal, Radio, Segmented, Select, Space, Spin, Tabs, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Empty, Form, Input, InputNumber, List, Modal, Pagination, Popconfirm, Radio, Segmented, Select, Space, Spin, Tabs, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { createParseCorrection, decideReview, decideReviewItem, getReviewDetail, listReviews, reviewPdfUrl } from '../../api/admin';
+import { batchReviewItems, createParseCorrection, decideArticleTitle, decideReview, decideReviewItem, getReviewDetail, listReviews, reviewPdfUrl } from '../../api/admin';
 import type { ReviewDetail, ReviewQueueItem } from '../../api/admin';
 import { UiIcon } from '../../components/UiIcon';
 
@@ -21,6 +21,20 @@ const metricLabel: Record<string, string> = {
 };
 
 const runTypeLabel = { PARSE_RUN: '解析结果', CHUNK_RUN: '分块结果' } as const;
+const displayStateLabel: Record<string, { text: string; color: string }> = {
+  ACTION_REQUIRED: { text: '有待处理项', color: 'orange' },
+  READY_TO_SUBMIT: { text: '可提交审核', color: 'blue' },
+  PASS: { text: '已通过', color: 'green' },
+  PASS_WITH_WARNING: { text: '警告通过', color: 'orange' },
+  REJECT: { text: '已驳回', color: 'red' },
+  FAILED: { text: '运行失败', color: 'red' },
+};
+const nodeReviewLabel: Record<string, { text: string; color: string }> = {
+  pending: { text: '待确认', color: 'orange' },
+  confirmed: { text: '已确认', color: 'green' },
+  not_required: { text: '无需人工确认', color: 'blue' },
+  rejected: { text: '已驳回', color: 'red' },
+};
 const stateLabel: Record<string, string> = {
   PARSE_REVIEW: '解析待审核', CHUNK_QUEUED: '等待分块', CHUNKING: '分块中', CHUNK_REVIEW: '分块待审核',
   INDEX_QUEUED: '等待索引', INDEXING: '索引构建中', READY_TO_PUBLISH: '索引已构建，待确认发布',
@@ -48,33 +62,68 @@ export function ReviewWorkbenchPage() {
   const navigate = useNavigate();
   const [items, setItems] = useState<ReviewQueueItem[]>([]);
   const [runType, setRunType] = useState<'PARSE_RUN' | 'CHUNK_RUN'>('PARSE_RUN');
+  const [processingStatus, setProcessingStatus] = useState<'PENDING' | 'PROCESSED'>('PENDING');
+  const [keywordInput, setKeywordInput] = useState('');
+  const [keyword, setKeyword] = useState('');
+  const [reviewState, setReviewState] = useState<string | undefined>();
+  const [sortBy, setSortBy] = useState<'UPDATED_DESC' | 'OLDEST_PENDING' | 'TITLE_ASC'>('UPDATED_DESC');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [queueCounts, setQueueCounts] = useState<Record<string, number>>({});
+  const [queueLoading, setQueueLoading] = useState(false);
   const [selected, setSelected] = useState<ReviewQueueItem | null>(null);
   const [detail, setDetail] = useState<ReviewDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedContent, setSelectedContent] = useState('');
   const [outcome, setOutcome] = useState<'PASS' | 'PASS_WITH_WARNING' | 'REJECT'>('PASS');
   const [comment, setComment] = useState('');
+  const [batchIssueOpen, setBatchIssueOpen] = useState(false);
+  const [batchComment, setBatchComment] = useState('');
+  const [articleTitleNode, setArticleTitleNode] = useState<ReviewDetail['nodes'][number] | null>(null);
+  const [articleTitleMode, setArticleTitleMode] = useState<'TITLE' | 'CONTENT'>('TITLE');
+  const [articleTitleValue, setArticleTitleValue] = useState('');
+  const [articleTitleComment, setArticleTitleComment] = useState('');
+  const [activeTab, setActiveTab] = useState('content');
   const [nextNotice, setNextNotice] = useState<{ kind: 'METADATA_WAIT' | 'INDEX_WAIT'; jobId: string } | null>(null);
   const [correctionNode, setCorrectionNode] = useState<ReviewDetail['nodes'][number] | null>(null);
   const detailRequestRevision = useRef(0);
   const [correctionForm] = Form.useForm<{ title?: string; node_number?: string; node_type?: string; parent_id?: number; order_no?: number }>();
 
-  const refresh = async (preferred?: { jobId: string; targetType: 'PARSE_RUN' | 'CHUNK_RUN' }, silent = false) => {
+  const refresh = async (
+    preferred?: { jobId: string; targetType: 'PARSE_RUN' | 'CHUNK_RUN' },
+    silent = false,
+    overrides?: { processingStatus?: 'PENDING' | 'PROCESSED'; page?: number },
+  ) => {
+    if (!silent) setQueueLoading(true);
     try {
-      const result = await listReviews(true);
-      setItems(result);
+      const requestedStatus = overrides?.processingStatus ?? processingStatus;
+      const requestedPage = overrides?.page ?? page;
+      const result = await listReviews({
+        include_history: true,
+        processing_status: requestedStatus,
+        target_type: runType,
+        keyword: keyword || undefined,
+        review_state: reviewState,
+        sort_by: sortBy,
+        page: requestedPage,
+      });
+      setItems(result.items);
+      setTotal(result.total);
+      setQueueCounts(result.counts);
       if (preferred) {
-        const target = result.find((item) => item.job_id === preferred.jobId && item.target_type === preferred.targetType);
-        if (target) { setRunType(preferred.targetType); setSelected(target); return; }
+        const target = result.items.find((item) => item.job_id === preferred.jobId && item.target_type === preferred.targetType);
+        if (target) { setSelected(target); return; }
       }
-      if (!result.some((item) => item.target_type === runType) && result[0]) setRunType(result[0].target_type);
-      setSelected((current) => result.find((item) => item.job_id === current?.job_id && item.target_type === current?.target_type)
-        ?? result.find((item) => item.target_type === runType)
-        ?? result[0]
-        ?? null);
+      setSelected((current) => {
+        const target = result.items.find((item) => item.job_id === current?.job_id && item.target_type === current?.target_type)
+          ?? result.items[0]
+          ?? null;
+        return target;
+      });
     } catch (error) { if (!silent) message.error(error instanceof Error ? error.message : '审核队列加载失败'); }
+    finally { if (!silent) setQueueLoading(false); }
   };
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => { void refresh(); }, [processingStatus, runType, keyword, reviewState, sortBy, page]);
   useEffect(() => {
     const poll = () => { if (document.visibilityState === 'visible') void refresh(undefined, true); };
     const timer = window.setInterval(poll, 5000);
@@ -85,7 +134,7 @@ export function ReviewWorkbenchPage() {
       document.removeEventListener('visibilitychange', poll);
       window.removeEventListener('focus', poll);
     };
-  }, [runType]);
+  }, [runType, processingStatus, keyword, reviewState, sortBy, page]);
   useEffect(() => {
     const revision = detailRequestRevision.current + 1;
     detailRequestRevision.current = revision;
@@ -93,6 +142,7 @@ export function ReviewWorkbenchPage() {
     setComment('');
     setNextNotice(null);
     setSelectedContent('');
+    setActiveTab('content');
     setDetail(null);
     if (!selected) { setDetailLoading(false); return; }
     setDetailLoading(true);
@@ -101,7 +151,7 @@ export function ReviewWorkbenchPage() {
         if (detailRequestRevision.current !== revision) return;
         setDetail(value);
         const hasOrdinaryWarning = value.issues.some(
-          (item) => !item.resolved && item.severity.toLowerCase() === 'warning',
+          (item) => !item.resolved && item.severity.toLowerCase() !== 'error',
         );
         setOutcome(hasOrdinaryWarning ? 'PASS_WITH_WARNING' : 'PASS');
       })
@@ -117,9 +167,12 @@ export function ReviewWorkbenchPage() {
   const pendingFieldCount = useMemo(() => detail?.fields.filter((item) => String(item.review_status) === 'pending').length ?? 0, [detail]);
   const pendingNodeCount = useMemo(() => detail?.nodes.filter((item) => String(item.review_status) === 'pending').length ?? 0, [detail]);
   const blockingIssueCount = useMemo(() => detail?.issues.filter((item) => !item.resolved && item.severity.toLowerCase() === 'error').length ?? 0, [detail]);
-  const filteredItems = useMemo(() => items.filter((item) => item.target_type === runType), [items, runType]);
-  const parseCount = useMemo(() => items.filter((item) => item.target_type === 'PARSE_RUN').length, [items]);
-  const chunkCount = items.length - parseCount;
+  const parseCount = processingStatus === 'PENDING' ? (queueCounts.pending_parse ?? 0) : (queueCounts.processed_parse ?? 0);
+  const chunkCount = processingStatus === 'PENDING' ? (queueCounts.pending_chunk ?? 0) : (queueCounts.processed_chunk ?? 0);
+  const pendingCount = (queueCounts.pending_parse ?? 0) + (queueCounts.pending_chunk ?? 0);
+  const processedCount = (queueCounts.processed_parse ?? 0) + (queueCounts.processed_chunk ?? 0);
+  const batchNodeIds = useMemo(() => detail?.target_type === 'PARSE_RUN' ? detail.nodes.filter((item) => String(item.review_status) === 'pending').map((item) => item.id) : [], [detail]);
+  const batchIssueIds = useMemo(() => detail?.issues.filter((item) => !item.resolved && item.severity.toLowerCase() !== 'error').map((item) => item.id) ?? [], [detail]);
   const approvalBlocked = outcome !== 'REJECT' && (
     (selected?.target_type === 'PARSE_RUN' && pendingNodeCount > 0) || blockingIssueCount > 0
   );
@@ -138,7 +191,9 @@ export function ReviewWorkbenchPage() {
       } else {
         setNextNotice(null); message.success('审核结果已提交');
       }
-      await refresh({ jobId: selected.job_id, targetType: selected.target_type });
+      setProcessingStatus('PROCESSED');
+      setReviewState(undefined);
+      setPage(1);
     } catch (error) { message.error(error instanceof Error ? error.message : '审核提交失败'); }
   };
 
@@ -146,9 +201,47 @@ export function ReviewWorkbenchPage() {
     if (!selected) return;
     try {
       await decideReviewItem(selected.job_id, { target_type, target_id, action });
-      setDetail(await getReviewDetail(selected.job_id, selected.target_type));
+      const value = await getReviewDetail(selected.job_id, selected.target_type);
+      setDetail(value);
+      setOutcome(value.issues.some((item) => !item.resolved && item.severity.toLowerCase() !== 'error') ? 'PASS_WITH_WARNING' : 'PASS');
       message.success('审核对象已处理');
     } catch (error) { message.error(error instanceof Error ? error.message : '审核对象处理失败'); }
+  };
+
+  const handleBatch = async (targetType: 'node' | 'issue' | 'chunk_issue', targetIds: number[], batchAction: 'confirm' | 'ignore', reason?: string) => {
+    if (!selected || !targetIds.length) return;
+    try {
+      await batchReviewItems(selected.job_id, { target_type: targetType, target_ids: targetIds, action: batchAction, comment: reason });
+      const value = await getReviewDetail(selected.job_id, selected.target_type);
+      setDetail(value);
+      setOutcome(value.issues.some((item) => !item.resolved && item.severity.toLowerCase() !== 'error') ? 'PASS_WITH_WARNING' : 'PASS');
+      setBatchIssueOpen(false); setBatchComment('');
+      message.success(`已批量处理 ${targetIds.length} 项`);
+    } catch (error) { message.error(error instanceof Error ? error.message : '批量处理失败'); }
+  };
+
+  const openArticleTitleDecision = (node: ReviewDetail['nodes'][number]) => {
+    setArticleTitleNode(node);
+    setArticleTitleMode('TITLE');
+    setArticleTitleValue(node.title ?? '');
+    setArticleTitleComment('');
+  };
+
+  const submitArticleTitleDecision = async () => {
+    if (!selected || !articleTitleNode) return;
+    try {
+      await decideArticleTitle(selected.job_id, {
+        node_id: articleTitleNode.id,
+        mode: articleTitleMode,
+        title: articleTitleMode === 'TITLE' ? articleTitleValue.trim() : undefined,
+        comment: articleTitleComment.trim() || undefined,
+      });
+      const value = await getReviewDetail(selected.job_id, selected.target_type);
+      setDetail(value);
+      setOutcome(value.issues.some((item) => !item.resolved && item.severity.toLowerCase() !== 'error') ? 'PASS_WITH_WARNING' : 'PASS');
+      setArticleTitleNode(null);
+      message.success(articleTitleMode === 'TITLE' ? '条标题已确认' : '已恢复为条文正文');
+    } catch (error) { message.error(error instanceof Error ? error.message : '条标题审核失败'); }
   };
 
   const openCorrection = (node: ReviewDetail['nodes'][number]) => {
@@ -181,14 +274,19 @@ export function ReviewWorkbenchPage() {
       <List.Item
         className="review-content-row"
         actions={String(node.review_status) === 'pending'
-          ? [<Button key="confirm" type="link" onClick={(event) => { event.stopPropagation(); void handleItem('node', node.id, 'confirm'); }}>确认结构</Button>]
+          ? String(node.rule_id) === 'NODE_ARTICLE_TITLE_HEURISTIC_V2'
+            ? [
+                <Button key="confirm-title" type="link" onClick={(event) => { event.stopPropagation(); void handleItem('node', node.id, 'confirm'); }}>确认条标题</Button>,
+                <Button key="adjust-title" type="link" onClick={(event) => { event.stopPropagation(); openArticleTitleDecision(node); }}>调整判断</Button>,
+              ]
+            : [<Button key="confirm" type="link" onClick={(event) => { event.stopPropagation(); void handleItem('node', node.id, 'confirm'); }}>确认结构</Button>]
           : String(detail.run.review_status) === 'approved'
             ? [<Button key="correct" type="link" onClick={(event) => { event.stopPropagation(); openCorrection(node); }}>派生修正</Button>]
             : undefined}
         onClick={() => setSelectedContent(node.text || node.title || '')}
       >
-        <div><Tag>{node.node_type}</Tag><strong>{node.path_text || node.title || `Node ${node.id}`}</strong></div>
-        <small>第 {node.page_start ?? '-'}—{node.page_end ?? node.page_start ?? '-'} 页 · Node {node.id} · {String(node.review_status) === 'pending' ? '待确认' : '已确认'}</small>
+        <div><Tag>{node.node_type}</Tag><strong>{node.path_text || node.title || `Node ${node.id}`}</strong> <Tag color={(nodeReviewLabel[String(node.review_status)] ?? { color: 'default' }).color}>{(nodeReviewLabel[String(node.review_status)] ?? { text: String(node.review_status) }).text}</Tag></div>
+        <small>第 {node.page_start ?? '-'}—{node.page_end ?? node.page_start ?? '-'} 页 · Node {node.id}{node.review_reason ? ` · ${node.review_reason}` : ''}</small>
       </List.Item>
     )} />
   ) : (
@@ -200,22 +298,92 @@ export function ReviewWorkbenchPage() {
     )} />
   );
 
+  const statusOptions = processingStatus === 'PENDING'
+    ? [
+        { label: '全部状态', value: '' },
+        { label: '有待处理项', value: 'ACTION_REQUIRED' },
+        { label: '可提交审核', value: 'READY_TO_SUBMIT' },
+      ]
+    : [
+        { label: '全部状态', value: '' },
+        { label: '已通过', value: 'PASS' },
+        { label: '警告通过', value: 'PASS_WITH_WARNING' },
+        { label: '已驳回', value: 'REJECT' },
+        { label: '运行失败', value: 'FAILED' },
+      ];
+
+  const queuePanel = (
+    <Card className="review-queue" title="运行与历史" variant="borderless">
+      <Input.Search
+        allowClear
+        value={keywordInput}
+        placeholder="搜索制度名称 / 文号 / 运行ID"
+        onChange={(event) => {
+          setKeywordInput(event.target.value);
+          if (!event.target.value) { setKeyword(''); setPage(1); }
+        }}
+        onSearch={(value) => { setKeyword(value.trim()); setPage(1); }}
+      />
+      <Segmented
+        block
+        value={processingStatus}
+        options={[{ label: `待处理 ${pendingCount}`, value: 'PENDING' }, { label: `已处理 ${processedCount}`, value: 'PROCESSED' }]}
+        onChange={(value) => { setProcessingStatus(value as 'PENDING' | 'PROCESSED'); setReviewState(undefined); setPage(1); }}
+      />
+      <Segmented
+        block
+        className="review-type-switch"
+        value={runType}
+        options={[{ label: `解析 ${parseCount}`, value: 'PARSE_RUN' }, { label: `分块 ${chunkCount}`, value: 'CHUNK_RUN' }]}
+        onChange={(value) => { setRunType(value as 'PARSE_RUN' | 'CHUNK_RUN'); setPage(1); }}
+      />
+      <div className="review-queue-filters">
+        <Select value={reviewState ?? ''} options={statusOptions} onChange={(value) => { setReviewState(value || undefined); setPage(1); }} />
+        <Select value={sortBy} options={[
+          { label: '最近更新', value: 'UPDATED_DESC' },
+          { label: processingStatus === 'PENDING' ? '最早待处理' : '最早更新', value: 'OLDEST_PENDING' },
+          { label: '制度名称', value: 'TITLE_ASC' },
+        ]} onChange={(value) => { setSortBy(value); setPage(1); }} />
+      </div>
+      <Typography.Text className="review-queue-total" type="secondary">共 {total} 条</Typography.Text>
+      <Spin spinning={queueLoading}>
+        <List
+          dataSource={items}
+          locale={{ emptyText: `暂无${processingStatus === 'PENDING' ? '待处理' : '已处理'}${runTypeLabel[runType]}` }}
+          renderItem={(item) => {
+            const display = displayStateLabel[item.display_state] ?? { text: item.display_state, color: 'default' };
+            return (
+              <button type="button" className={`review-queue-item${selected?.job_id === item.job_id && selected.target_type === item.target_type ? ' active' : ''}`} onClick={() => setSelected(item)}>
+                <strong title={item.title}>{item.title}</strong>
+                {item.document_code && <small>{item.document_code}</small>}
+                <span><Tag>{runTypeLabel[item.target_type]}</Tag>运行 {item.target_id} · <Tag color={display.color}>{display.text}</Tag></span>
+                <small>{new Date(item.updated_at).toLocaleString('zh-CN', { hour12: false })}</small>
+              </button>
+            );
+          }}
+        />
+      </Spin>
+      {total > 0 && <Pagination size="small" current={page} pageSize={10} total={total} showSizeChanger={false} onChange={setPage} />}
+    </Card>
+  );
+
   return (
     <div className="admin-page review-page">
-      <div className="admin-page-title"><div><Typography.Title level={2}>ParseRun / ChunkRun 审核工作台</Typography.Title><Typography.Text type="secondary">直接审核真实结构、字段、页码、Chunk来源和质量问题</Typography.Text></div><Tag color="blue">运行记录 {items.length}</Tag></div>
+      <div className="admin-page-title"><div><Typography.Title level={2}>ParseRun / ChunkRun 审核工作台</Typography.Title><Typography.Text type="secondary">直接审核真实结构、字段、页码、Chunk来源和质量问题</Typography.Text></div><Tag color="blue">当前结果 {total}</Tag></div>
       {nextNotice && <Alert showIcon type="info" message={nextNotice.kind === 'METADATA_WAIT' ? '下一步：确认制度元数据' : '下一步：构建索引快照'} description={nextNotice.kind === 'METADATA_WAIT' ? `解析识别出的 ${pendingFieldCount} 个字段候选将在统一元数据页面核对；确认通过后Worker才生成ChunkRun。` : '该制度已进入“可纳入索引”，管理员可与其他制度变更合并为一次全局IndexRun。'} action={<Space><Button size="small" icon={<UiIcon icon={ReloadOutlined} />} onClick={() => void refresh()}>刷新运行</Button><Button size="small" type="primary" icon={<UiIcon icon={ArrowRightOutlined} />} onClick={() => navigate('/admin/knowledge')}>制度治理</Button></Space>} />}
-      {!selected ? <Card variant="borderless"><Empty image={<UiIcon icon={FileSearchOutlined} />} description="当前没有待审核的 ParseRun 或 ChunkRun" /></Card> : (
+      {!selected ? <div className="review-workbench">{queuePanel}<Card className="review-main" variant="borderless"><Empty image={<UiIcon icon={FileSearchOutlined} />} description="当前筛选条件下没有审核运行" /></Card></div> : (
         <div className="review-workbench">
-          <Card className="review-queue" title="运行与历史" variant="borderless"><Segmented block className="review-type-switch" value={runType} options={[{ label: `解析 ${parseCount}`, value: 'PARSE_RUN' }, { label: `分块 ${chunkCount}`, value: 'CHUNK_RUN' }]} onChange={(value) => { const type = value as 'PARSE_RUN' | 'CHUNK_RUN'; const next = items.find((item) => item.target_type === type); if (!next) { message.info(`暂无${runTypeLabel[type]}`); return; } setRunType(type); setSelected(next); }} /><List dataSource={filteredItems} locale={{ emptyText: `暂无${runTypeLabel[runType]}` }} renderItem={(item) => <button type="button" className={`review-queue-item${selected.job_id === item.job_id && selected.target_type === item.target_type ? ' active' : ''}`} onClick={() => setSelected(item)}><strong>{item.title}</strong><span><Tag>{runTypeLabel[item.target_type]}</Tag>运行 {item.target_id} · {item.issue_count} 项待处理</span></button>} /></Card>
+          {queuePanel}
           <Card className="review-main" variant="borderless" title={`${runTypeLabel[selected.target_type]}审核`} extra={<Typography.Text copyable>{selected.target_id}</Typography.Text>}>
             <Spin spinning={detailLoading}>
               {detail && <>
                 <div className="review-document-meta"><Typography.Title level={4}>{String(detail.run.document_title ?? selected.title)}</Typography.Title><Space wrap><Tag color="blue">{stateLabel[selected.state] ?? selected.state}</Tag><span>制度ID：{selected.document_id}</span><span>审核状态：{String(detail.run.review_status ?? '-')}</span>{detail.run.render_engine && <span>渲染引擎：{detail.run.render_engine}</span>}</Space></div>
                 <div className="review-metrics">{Object.entries(detail.metrics).filter(([, value]) => typeof value !== 'object').map(([key, value]) => <div key={key}><small>{metricLabel[key] ?? key}</small><strong>{renderMetric(key, value)}</strong></div>)}</div>
-                <Tabs items={[
+                {selected.processing_status === 'PENDING' && (batchNodeIds.length > 0 || batchIssueIds.length > 0) && <Alert showIcon type="info" message="当前运行可批量处理" description={batchNodeIds.length > 0 ? `有 ${batchNodeIds.length} 个节点待确认。批量操作仅作用于当前运行。` : `节点已经全部确认，当前剩余 ${batchIssueIds.length} 个普通警告；阻断问题不会进入批量接受。`} action={<Space>{batchNodeIds.length > 0 && <Popconfirm title={`确认当前运行全部 ${batchNodeIds.length} 个待确认节点？`} onConfirm={() => void handleBatch('node', batchNodeIds, 'confirm')}><Button size="small" type="primary">批量确认节点</Button></Popconfirm>}{batchIssueIds.length > 0 && <Button size="small" type="primary" onClick={() => { setActiveTab('issues'); setBatchIssueOpen(true); }}>批量接受普通警告</Button>}</Space>} />}
+                <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
                   { key: 'content', label: detail.target_type === 'PARSE_RUN' ? `节点树（${detail.nodes.length}）` : `Chunk（${detail.chunks.length}）`, children: contentTab },
                   { key: 'fields', label: `字段候选（${detail.fields.length}）`, children: <List dataSource={detail.fields} locale={{ emptyText: '本运行无字段候选' }} renderItem={(field) => <List.Item><Space direction="vertical" size={0}><Space><strong>{fieldLabel[field.field_name] ?? field.field_name}</strong><Tag color="blue">供元数据页核对</Tag></Space><span>{field.normalized_value || field.raw_value}</span><small>置信度 {(field.confidence * 100).toFixed(1)}%</small></Space></List.Item>} /> },
-                  { key: 'issues', label: `问题（${detail.issues.length}）`, children: <List dataSource={detail.issues} locale={{ emptyText: '未发现质量问题' }} renderItem={(issue) => <List.Item actions={!issue.resolved && issue.severity.toLowerCase() !== 'error' ? [<Button key="ignore" type="link" onClick={() => void handleItem(detail.target_type === 'PARSE_RUN' ? 'issue' : 'chunk_issue', issue.id, 'ignore')}>确认并接受</Button>] : undefined}><Space direction="vertical" size={2}><Space><Tag color={issue.severity.toLowerCase() === 'error' ? 'red' : 'orange'}>{issue.severity}</Tag><Tag>{issue.issue_type}</Tag><strong>{issue.issue_code}</strong>{issue.resolved && <Tag color="green">已处理</Tag>}</Space><span>{issue.message}</span></Space></List.Item>} /> },
+                  { key: 'issues', label: `问题（${detail.issues.length}）`, children: <><Space style={{ marginBottom: 12 }}>{batchIssueIds.length > 0 && selected.processing_status === 'PENDING' && <Button onClick={() => setBatchIssueOpen(true)}>批量接受全部普通警告（{batchIssueIds.length}）</Button>}</Space><List dataSource={detail.issues} locale={{ emptyText: '未发现质量问题' }} renderItem={(issue) => <List.Item actions={!issue.resolved && issue.severity.toLowerCase() !== 'error' ? [<Button key="ignore" type="link" onClick={() => void handleItem(detail.target_type === 'PARSE_RUN' ? 'issue' : 'chunk_issue', issue.id, 'ignore')}>确认并接受</Button>] : undefined}><Space direction="vertical" size={2}><Space><Tag color={issue.severity.toLowerCase() === 'error' ? 'red' : 'orange'}>{issue.severity.toLowerCase() === 'error' ? '阻断问题' : '普通警告'}</Tag><Tag>{issue.issue_type}</Tag><strong>{issue.issue_code}</strong>{issue.resolved && <Tag color="green">已处理</Tag>}</Space><span>{issue.message}</span></Space></List.Item>} /></> },
                   ...(detail.pdf_available ? [{ key: 'pdf', label: `PDF（${detail.run.page_count ?? '-'}页）`, children: <iframe className="review-pdf" title="ParseRun PDF" src={reviewPdfUrl(selected.job_id)} /> }] : []),
                 ]} />
                 {selectedContent && <Card size="small" title="当前选中内容" className="review-selected-content"><Typography.Paragraph>{selectedContent}</Typography.Paragraph></Card>}
@@ -234,6 +402,19 @@ export function ReviewWorkbenchPage() {
           <Form.Item name="parent_id" label="父节点"><Select allowClear showSearch optionFilterProp="label" options={(detail?.nodes ?? []).filter((item) => item.id !== correctionNode?.id).map((item) => ({ value: item.id, label: `${item.path_text || item.title || `Node ${item.id}`}（${item.id}）` }))} /></Form.Item>
           <Form.Item name="order_no" label="同级顺序"><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
         </Form>
+      </Modal>
+      <Modal title="批量接受普通警告" open={batchIssueOpen} okText="确认批量接受" okButtonProps={{ disabled: !batchComment.trim() }} onCancel={() => { setBatchIssueOpen(false); setBatchComment(''); }} onOk={() => void handleBatch(detail?.target_type === 'PARSE_RUN' ? 'issue' : 'chunk_issue', batchIssueIds, 'ignore', batchComment)}>
+        <Alert showIcon type="warning" message={`将接受当前运行中的 ${batchIssueIds.length} 个普通警告`} description="阻断级问题不会进入批量操作。请填写统一接受理由，审核记录将逐项留痕。" />
+        <Input.TextArea style={{ marginTop: 16 }} rows={4} value={batchComment} onChange={(event) => setBatchComment(event.target.value)} placeholder="必填：说明接受这些普通警告的依据" />
+      </Modal>
+      <Modal title="条标题人工确认" open={Boolean(articleTitleNode)} okText="保存审核结论" okButtonProps={{ disabled: articleTitleMode === 'TITLE' && !articleTitleValue.trim() }} onCancel={() => setArticleTitleNode(null)} onOk={() => void submitArticleTitleDecision()}>
+        <Alert showIcon type="info" message="请选择这段文字的真实结构" description="确认或调整标题会同步重算后代节点路径；改为条文正文时将从原始节点文字恢复正文，不改写制度原文。" />
+        <Radio.Group style={{ marginTop: 16 }} value={articleTitleMode} onChange={(event) => setArticleTitleMode(event.target.value)}>
+          <Radio.Button value="TITLE">作为条标题</Radio.Button>
+          <Radio.Button value="CONTENT">作为条文正文</Radio.Button>
+        </Radio.Group>
+        {articleTitleMode === 'TITLE' && <Input style={{ marginTop: 16 }} value={articleTitleValue} onChange={(event) => setArticleTitleValue(event.target.value)} placeholder="条标题" />}
+        <Input.TextArea style={{ marginTop: 16 }} rows={3} value={articleTitleComment} onChange={(event) => setArticleTitleComment(event.target.value)} placeholder="可填写判断依据" />
       </Modal>
     </div>
   );

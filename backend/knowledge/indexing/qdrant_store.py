@@ -7,9 +7,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Sequence
+import logging
+import time
+from typing import Any, Callable, Sequence, TypeVar
 
 from qdrant_client import QdrantClient, models
+
+
+LOGGER = logging.getLogger("policy_platform.worker.dependencies.qdrant")
+ResultT = TypeVar("ResultT")
 
 
 @dataclass(frozen=True)
@@ -45,6 +51,37 @@ class QdrantVectorStore:
     ) -> None:
         self.client = QdrantClient(url=url, api_key=api_key, timeout=timeout_seconds)
 
+    @staticmethod
+    def _call(
+        operation: str,
+        callback: Callable[[], ResultT],
+        *,
+        collection_name: str | None = None,
+        item_count: int | None = None,
+    ) -> ResultT:
+        """记录Qdrant调用耗时和失败类型，不记录向量、payload或认证信息。"""
+
+        started = time.perf_counter()
+        LOGGER.info(
+            "event=dependency_call_started dependency=qdrant operation=%s collection=%s item_count=%s",
+            operation, collection_name or "-", item_count if item_count is not None else "-",
+        )
+        try:
+            result = callback()
+        except Exception as exc:
+            LOGGER.error(
+                "event=dependency_call_failed dependency=qdrant operation=%s collection=%s item_count=%s elapsed_ms=%d error_type=%s",
+                operation, collection_name or "-", item_count if item_count is not None else "-",
+                int((time.perf_counter() - started) * 1000), type(exc).__name__,
+            )
+            raise
+        LOGGER.info(
+            "event=dependency_call_completed dependency=qdrant operation=%s collection=%s item_count=%s elapsed_ms=%d",
+            operation, collection_name or "-", item_count if item_count is not None else "-",
+            int((time.perf_counter() - started) * 1000),
+        )
+        return result
+
     def ensure_collection(
         self,
         collection_name: str,
@@ -53,17 +90,29 @@ class QdrantVectorStore:
         dimension: int,
         distance_metric: str,
     ) -> None:
-        if not self.client.collection_exists(collection_name):
+        exists = self._call(
+            "collection_exists",
+            lambda: self.client.collection_exists(collection_name),
+            collection_name=collection_name,
+        )
+        if not exists:
             distance = self._distance(distance_metric)
-            self.client.create_collection(
+            self._call(
+                "create_collection",
+                lambda: self.client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config={
+                        vector_name: models.VectorParams(size=dimension, distance=distance)
+                    },
+                ),
                 collection_name=collection_name,
-                vectors_config={
-                    vector_name: models.VectorParams(size=dimension, distance=distance)
-                },
             )
             return
 
-        info = self.client.get_collection(collection_name)
+        info = self._call(
+            "get_collection", lambda: self.client.get_collection(collection_name),
+            collection_name=collection_name,
+        )
         vectors = info.config.params.vectors
         if not isinstance(vectors, dict) or vector_name not in vectors:
             raise ValueError(f"Collection {collection_name} 缺少命名向量 {vector_name}")
@@ -72,7 +121,10 @@ class QdrantVectorStore:
             raise ValueError(f"Collection {collection_name} 的向量契约与 IndexRun 不一致")
 
     def ensure_payload_indexes(self, collection_name: str) -> None:
-        info = self.client.get_collection(collection_name)
+        info = self._call(
+            "get_collection", lambda: self.client.get_collection(collection_name),
+            collection_name=collection_name,
+        )
         existing = set((info.payload_schema or {}).keys())
         fields = {
             "document_id": models.PayloadSchemaType.INTEGER,
@@ -84,31 +136,44 @@ class QdrantVectorStore:
         }
         for field_name, field_schema in fields.items():
             if field_name not in existing:
-                self.client.create_payload_index(
+                self._call(
+                    "create_payload_index",
+                    lambda field_name=field_name, field_schema=field_schema: self.client.create_payload_index(
+                        collection_name=collection_name,
+                        field_name=field_name,
+                        field_schema=field_schema,
+                        wait=True,
+                    ),
                     collection_name=collection_name,
-                    field_name=field_name,
-                    field_schema=field_schema,
-                    wait=True,
                 )
 
     def upsert(
         self, collection_name: str, vector_name: str, points: Sequence[VectorPoint]
     ) -> None:
-        self.client.upsert(
+        structs = [
+            models.PointStruct(
+                id=point.point_id,
+                vector={vector_name: point.vector},
+                payload=point.payload,
+            )
+            for point in points
+        ]
+        self._call(
+            "upsert",
+            lambda: self.client.upsert(
+                collection_name=collection_name, points=structs, wait=True,
+            ),
             collection_name=collection_name,
-            points=[
-                models.PointStruct(
-                    id=point.point_id,
-                    vector={vector_name: point.vector},
-                    payload=point.payload,
-                )
-                for point in points
-            ],
-            wait=True,
+            item_count=len(structs),
         )
 
     def exact_count(self, collection_name: str) -> int:
-        return int(self.client.count(collection_name=collection_name, exact=True).count)
+        response = self._call(
+            "count",
+            lambda: self.client.count(collection_name=collection_name, exact=True),
+            collection_name=collection_name,
+        )
+        return int(response.count)
 
     def retrieve(
         self,
@@ -118,11 +183,17 @@ class QdrantVectorStore:
         vector_name: str,
         with_vectors: bool,
     ) -> dict[str, StoredPoint]:
-        records = self.client.retrieve(
+        ids = list(point_ids)
+        records = self._call(
+            "retrieve",
+            lambda: self.client.retrieve(
+                collection_name=collection_name,
+                ids=ids,
+                with_payload=True,
+                with_vectors=[vector_name] if with_vectors else False,
+            ),
             collection_name=collection_name,
-            ids=list(point_ids),
-            with_payload=True,
-            with_vectors=[vector_name] if with_vectors else False,
+            item_count=len(ids),
         )
         result: dict[str, StoredPoint] = {}
         for record in records:
@@ -139,7 +210,8 @@ class QdrantVectorStore:
         return result
 
     def alias_target(self, alias_name: str) -> str | None:
-        for alias in self.client.get_aliases().aliases:
+        response = self._call("get_aliases", self.client.get_aliases)
+        for alias in response.aliases:
             if alias.alias_name == alias_name:
                 return str(alias.collection_name)
         return None
@@ -162,7 +234,11 @@ class QdrantVectorStore:
                 )
             )
         )
-        self.client.update_collection_aliases(change_aliases_operations=operations)
+        self._call(
+            "switch_alias",
+            lambda: self.client.update_collection_aliases(change_aliases_operations=operations),
+            collection_name=collection_name,
+        )
 
     def search(
         self,
@@ -173,14 +249,18 @@ class QdrantVectorStore:
         limit: int,
         query_filter: models.Filter | None = None,
     ) -> list[SearchHit]:
-        response = self.client.query_points(
+        response = self._call(
+            "query_points",
+            lambda: self.client.query_points(
+                collection_name=alias_name,
+                query=query_vector,
+                using=vector_name,
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            ),
             collection_name=alias_name,
-            query=query_vector,
-            using=vector_name,
-            query_filter=query_filter,
-            limit=limit,
-            with_payload=True,
-            with_vectors=False,
         )
         return [
             SearchHit(

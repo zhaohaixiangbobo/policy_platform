@@ -100,13 +100,13 @@ class PolicyChunker:
     def __exit__(self, *_: object) -> None:
         self.close()
 
-    def run_all_active(self, *, activate: bool = True) -> list[dict[str, Any]]:
+    def run_all_active(self, *, activate: bool = False) -> list[dict[str, Any]]:
         rows = self.db.connection.execute(
             "SELECT id FROM policy_document WHERE active_parse_run_id IS NOT NULL ORDER BY id"
         ).fetchall()
         return [self.run_document(int(row["id"]), activate=activate) for row in rows]
 
-    def run_document(self, document_id: int, *, activate: bool = True) -> dict[str, Any]:
+    def run_document(self, document_id: int, *, activate: bool = False) -> dict[str, Any]:
         row = self.db.connection.execute(
             "SELECT active_parse_run_id FROM policy_document WHERE id=?", (document_id,)
         ).fetchone()
@@ -121,9 +121,12 @@ class PolicyChunker:
         parse_run_id: int,
         *,
         allow_unreviewed: bool = False,
-        activate: bool = True,
+        activate: bool = False,
     ) -> dict[str, Any]:
         """生成一个 ChunkRun；正式模式只允许读取 active ParseRun。"""
+
+        if activate:
+            raise ValueError("ChunkRun自动激活已禁用，请使用review-chunk完成显式人工批准")
 
         context = self._source_context(parse_run_id)
         active_parse_run_id = context["active_parse_run_id"]
@@ -145,8 +148,6 @@ class PolicyChunker:
         ).fetchone()
         if existing:
             run_id = int(existing["id"])
-            if activate:
-                self.activate_run_if_ready(run_id)
             return self.run_summary(run_id)
 
         started = time.perf_counter()
@@ -204,7 +205,8 @@ class PolicyChunker:
             issue_counts = self._issue_counts(chunk_run_id)
             blocked = issue_counts["error"] + issue_counts["review"] > 0
             status = "review_required" if blocked else "succeeded"
-            review_status = "pending" if blocked else "not_required"
+            # 零问题运行仍需人工提交最终审核，不能把“无需逐项处置”视为批准。
+            review_status = "pending" if blocked else "ready_for_approval"
             elapsed = time.perf_counter() - started
             self._update_chunk_run(
                 chunk_run_id,
@@ -215,8 +217,6 @@ class PolicyChunker:
                 validation_issue_count=sum(issue_counts.values()),
                 **metrics,
             )
-            if activate and not blocked and source_scope == "active":
-                self.activate_run_if_ready(chunk_run_id)
         except Exception as exc:
             self._update_chunk_run(
                 chunk_run_id,
@@ -1411,7 +1411,7 @@ class PolicyChunker:
         ready = (
             row["source_scope"] == "active"
             and row["status"] == "succeeded"
-            and row["review_status"] in {"not_required", "approved"}
+            and row["review_status"] == "approved"
             and row["active_parse_run_id"] is not None
             and int(row["active_parse_run_id"]) == int(row["parse_run_id"])
             and unresolved == 0

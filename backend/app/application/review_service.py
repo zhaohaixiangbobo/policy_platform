@@ -35,6 +35,125 @@ class ReviewService:
     def queue(self) -> list[IngestionJob]:
         return list(self.session.scalars(select(IngestionJob).where(IngestionJob.state.in_(["PARSE_REVIEW", "CHUNK_REVIEW"])).order_by(IngestionJob.updated_at)).all())
 
+    def search_queue(
+        self,
+        *,
+        include_history: bool,
+        processing_status: str | None,
+        target_type: str | None,
+        keyword: str | None,
+        review_state: str | None,
+        sort_by: str,
+        page: int,
+        page_size: int,
+    ) -> dict:
+        """聚合两库审核摘要，并在服务端完成搜索、筛选、排序和分页。"""
+
+        if self.reader is None:
+            raise RuntimeError("审核队列查询必须提供Knowledge读服务")
+        jobs = (
+            list(self.session.scalars(select(IngestionJob).order_by(IngestionJob.updated_at.desc())).all())
+            if include_history else self.queue()
+        )
+        items: list[dict] = []
+        for job in jobs:
+            targets: list[tuple[str, int]] = []
+            if include_history:
+                if job.parse_run_id is not None:
+                    targets.append(("PARSE_RUN", job.parse_run_id))
+                if job.chunk_run_id is not None:
+                    targets.append(("CHUNK_RUN", job.chunk_run_id))
+            else:
+                run_type = "PARSE_RUN" if job.state == "PARSE_REVIEW" else "CHUNK_RUN"
+                run_id = job.parse_run_id if run_type == "PARSE_RUN" else job.chunk_run_id
+                if run_id is not None:
+                    targets.append((run_type, run_id))
+
+            for run_type, run_id in targets:
+                detail = self.reader.review_detail(run_type, run_id)
+                pending_count = sum(1 for item in detail["issues"] if not item.get("resolved"))
+                review_objects = [*detail["nodes"], *detail["chunks"]]
+                pending_count += sum(
+                    1 for item in review_objects
+                    if str(item.get("review_status", "")).lower() == "pending"
+                )
+                run_status = str(detail["run"].get("status") or "").lower()
+                run_review_status = str(detail["run"].get("review_status") or "pending").lower()
+                latest_review = self.session.scalar(select(ReviewRecord).where(
+                    ReviewRecord.target_type == run_type,
+                    ReviewRecord.target_id == str(run_id),
+                ).order_by(ReviewRecord.created_at.desc()))
+                processed = (
+                    latest_review is not None
+                    or run_review_status in {"approved", "rejected"}
+                    or run_status == "failed"
+                )
+                outcome = latest_review.outcome if latest_review else (
+                    "REJECT" if run_review_status == "rejected"
+                    else "PASS" if run_review_status == "approved"
+                    else None
+                )
+                display_state = (
+                    "FAILED" if run_status == "failed"
+                    else outcome if outcome
+                    else "ACTION_REQUIRED" if pending_count else "READY_TO_SUBMIT"
+                )
+                document_title = str(detail["run"].get("document_title") or job.task_name)
+                document_code = detail["run"].get("document_code")
+                items.append({
+                    "target_type": run_type,
+                    "target_id": str(run_id),
+                    "job_id": job.id,
+                    "document_id": job.document_id,
+                    "title": document_title,
+                    "document_code": str(document_code) if document_code else None,
+                    "state": job.state,
+                    "issue_count": pending_count,
+                    "review_status": run_review_status,
+                    "processing_status": "PROCESSED" if processed else "PENDING",
+                    "review_outcome": outcome,
+                    "display_state": display_state,
+                    "created_at": job.created_at,
+                    "updated_at": latest_review.created_at if latest_review else job.updated_at,
+                    "_search_text": " ".join(filter(None, [
+                        document_title, str(document_code or ""), job.task_name,
+                        str(run_id), job.id,
+                    ])).lower(),
+                })
+
+        normalized_keyword = (keyword or "").strip().lower()
+        searched = [item for item in items if not normalized_keyword or normalized_keyword in item["_search_text"]]
+        counts = {
+            "pending_parse": sum(item["processing_status"] == "PENDING" and item["target_type"] == "PARSE_RUN" for item in searched),
+            "pending_chunk": sum(item["processing_status"] == "PENDING" and item["target_type"] == "CHUNK_RUN" for item in searched),
+            "processed_parse": sum(item["processing_status"] == "PROCESSED" and item["target_type"] == "PARSE_RUN" for item in searched),
+            "processed_chunk": sum(item["processing_status"] == "PROCESSED" and item["target_type"] == "CHUNK_RUN" for item in searched),
+        }
+        filtered = [
+            item for item in searched
+            if (processing_status is None or item["processing_status"] == processing_status)
+            and (target_type is None or item["target_type"] == target_type)
+            and (review_state is None or item["display_state"] == review_state)
+        ]
+        if sort_by == "OLDEST_PENDING":
+            filtered.sort(key=lambda item: (item["updated_at"], item["target_id"]))
+        elif sort_by == "TITLE_ASC":
+            filtered.sort(key=lambda item: (item["title"], item["target_id"]))
+        else:
+            filtered.sort(key=lambda item: (item["updated_at"], item["target_id"]), reverse=True)
+        total = len(filtered)
+        start = (page - 1) * page_size
+        page_items = filtered[start:start + page_size]
+        for item in page_items:
+            item.pop("_search_text", None)
+        return {
+            "items": page_items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "counts": counts,
+        }
+
     def decide(self, job_id: str, outcome: str, comment: str | None, warning_acceptance: str | None, reviewer_user_id: str) -> IngestionJob:
         job = self.session.get(IngestionJob, job_id)
         if job is None:
@@ -114,3 +233,35 @@ class ReviewService:
                 raise ReviewConflictError("ChunkRun审核对象类型非法")
             return self.management.decide_chunk_item(job.chunk_run_id, target_type, target_id, action, reviewer_user_id, comment)
         raise ReviewConflictError("任务当前不在审核节点")
+
+    def decide_items(self, job_id: str, target_type: str, target_ids: list[int], action: str, comment: str | None, reviewer_user_id: str) -> dict:
+        """批量操作只处理当前运行内可安全确认的同类对象。"""
+
+        job = self.session.get(IngestionJob, job_id)
+        if job is None:
+            raise LookupError("任务不存在")
+        if job.state == "PARSE_REVIEW" and job.parse_run_id is not None:
+            if target_type not in {"node", "issue"}:
+                raise ReviewConflictError("ParseRun批量对象类型非法")
+            return self.management.decide_parse_items(
+                job.parse_run_id, target_type, target_ids, action, reviewer_user_id, comment
+            )
+        if job.state == "CHUNK_REVIEW" and job.chunk_run_id is not None:
+            if target_type != "chunk_issue" or action != "ignore":
+                raise ReviewConflictError("ChunkRun批量操作只支持接受普通问题")
+            return self.management.decide_chunk_items(
+                job.chunk_run_id, target_ids, reviewer_user_id, comment
+            )
+        raise ReviewConflictError("任务当前不在审核节点")
+
+    def decide_article_title(self, job_id: str, node_id: int, mode: str, title: str | None, comment: str | None, reviewer_user_id: str) -> dict:
+        """只允许在当前ParseRun审核阶段处置启发式条标题。"""
+
+        job = self.session.get(IngestionJob, job_id)
+        if job is None:
+            raise LookupError("任务不存在")
+        if job.state != "PARSE_REVIEW" or job.parse_run_id is None:
+            raise ReviewConflictError("任务当前不在ParseRun审核节点")
+        return self.management.decide_parse_article_title(
+            job.parse_run_id, node_id, mode, reviewer_user_id, title, comment
+        )

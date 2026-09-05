@@ -32,8 +32,9 @@ ProgressCallback = Callable[[str], None]
 class ParserConfig:
     """解析规则和输出配置。"""
 
-    # 0.1.3：图片默认放行；正文图片仍作为 Source Block 留痕并进入人工复核。
-    parser_version: str = "0.1.3"
+    # 0.1.4：条标题采用强结构证据和可人工确认的启发式规则。
+    parser_version: str = "0.1.4"
+    article_title_rule_version: str = "article_title_v2"
     render_pdf: bool = True
     render_engine: str = "auto_headless"
     libreoffice_path: str | None = None
@@ -50,6 +51,8 @@ class ParserConfig:
 
         if not 0 <= self.character_error_threshold <= self.character_review_threshold <= 1:
             raise ValueError("字符覆盖率阈值必须满足 0 <= error <= review <= 1")
+        if self.auto_activate:
+            raise ValueError("ParseRun自动激活已禁用，请使用review-parse完成显式人工批准")
 
     def config_hash(self) -> str:
         payload = json.dumps(asdict(self), ensure_ascii=False, sort_keys=True)
@@ -260,8 +263,9 @@ class PolicyParserPipeline:
                 or bool(pending_nodes)
             )
             status = "failed" if has_error else ("review_required" if needs_review else "succeeded")
-            review_status = "required" if needs_review or has_error else "passed"
-            run_review_status = "pending" if needs_review or has_error else "not_required"
+            # 无质量问题只代表可以提交，不等于已经完成人工批准。
+            review_status = "required"
+            run_review_status = "pending" if needs_review or has_error else "ready_for_approval"
             elapsed = time.perf_counter() - started
             self.db.update_run(
                 run_id,
@@ -283,9 +287,6 @@ class PolicyParserPipeline:
                 "current_parse_run_id": run_id,
                 "latest_parse_run_id": run_id,
             }
-            # 无需人工审核的运行可直接成为正式启用版本；待审核运行不覆盖既有 active。
-            if self.config.auto_activate and not needs_review and not has_error:
-                document_state["active_parse_run_id"] = run_id
             self.db.update_document(document_id, **document_state)
             summary = self.db.run_summary(run_id)
             return summary

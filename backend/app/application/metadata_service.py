@@ -24,6 +24,8 @@ class MetadataApplicationService:
         self.ingestion = ingestion
 
     def list(self) -> list[dict]:
+        """保留内部完整列表能力；管理接口使用 search 做筛选和分页。"""
+
         requests = {
             item.metadata_revision_id: item
             for item in self.session.scalars(select(MetadataChangeRequest)).all()
@@ -39,6 +41,49 @@ class MetadataApplicationService:
                 "job_id": request.job_id if request else None,
             })
         return result
+
+    def search(
+        self,
+        *,
+        keyword: str | None,
+        metadata_status: str | None,
+        sort_by: str,
+        page: int,
+        page_size: int,
+    ) -> dict:
+        """跨Platform审核状态和Knowledge元数据进行轻量治理检索。"""
+
+        rows = self.list()
+        term = (keyword or "").strip().casefold()
+        if term:
+            searchable_fields = (
+                "title", "file_name", "document_code", "issuing_org",
+                "owner_department", "canonical_title",
+            )
+            rows = [
+                row for row in rows
+                if any(term in str(row.get(field) or "").casefold() for field in searchable_fields)
+            ]
+        if metadata_status == "ACTION_REQUIRED":
+            rows = [row for row in rows if row.get("request_status") in {"DRAFT", "PENDING_REVIEW", "REJECTED"}]
+        elif metadata_status:
+            rows = [row for row in rows if row.get("request_status") == metadata_status]
+
+        if sort_by == "TITLE_ASC":
+            rows.sort(key=lambda row: str(row.get("title") or row.get("file_name") or "").casefold())
+        elif sort_by == "PUBLISH_DATE_DESC":
+            rows.sort(key=lambda row: (str(row.get("publish_date") or ""), int(row["id"])), reverse=True)
+        elif sort_by == "UPDATED_DESC":
+            rows.sort(key=lambda row: (str(row.get("updated_at") or ""), int(row["id"])), reverse=True)
+        else:
+            priority = {"PENDING_REVIEW": 0, "DRAFT": 1, "REJECTED": 2, "APPROVED": 3, "PUBLISHED": 4}
+            rows.sort(key=lambda row: (
+                priority.get(str(row.get("request_status")), 5),
+                -int(row["id"]),
+            ))
+        total = len(rows)
+        start = (page - 1) * page_size
+        return {"items": rows[start:start + page_size], "total": total, "page": page, "page_size": page_size}
 
     def detail(self, document_id: int) -> dict:
         detail = self.knowledge.detail(document_id)

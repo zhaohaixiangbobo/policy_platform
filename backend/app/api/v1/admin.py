@@ -21,7 +21,7 @@ from app.application.evidence_reference_validator import EvidenceReferenceValida
 from app.config import get_settings
 from app.infrastructure.db.models import IngestionArtifact, IngestionJob, IngestionJobEvent, PolicyRelation, ReviewRecord, SystemConfig, UserAccount
 from app.infrastructure.db.session import get_db_session
-from app.schemas.admin import BatchCreateRequest, EvidenceBindRequest, EvidenceReferenceResponse, IndexPublicationCreateRequest, IndexStatusResponse, IngestionJobResponse, JobListResponse, JobPublishRequest, JobRetryRequest, MetadataDraftCreateRequest, MetadataRevisionUpdateRequest, MetadataReviewRequest, ParseNodeCorrectionRequest, PolicySeriesAssignRequest, ProcessCreateRequest, ProcessGraphUpdateRequest, ProcessReviewerRequest, ProcessSummary, RelationCreateRequest, RelationReviewRequest, RelationSummary, ReviewDecisionRequest, ReviewDetail, ReviewItemDecisionRequest, ReviewQueueItem
+from app.schemas.admin import BatchCreateRequest, EvidenceBindRequest, EvidenceReferenceResponse, IndexPublicationCreateRequest, IndexStatusResponse, IngestionJobResponse, JobListResponse, JobPublishRequest, JobRetryRequest, MetadataDraftCreateRequest, MetadataRevisionUpdateRequest, MetadataReviewRequest, ParseNodeCorrectionRequest, PolicySeriesAssignRequest, ProcessCreateRequest, ProcessGraphUpdateRequest, ProcessReviewerRequest, ProcessSummary, RelationCreateRequest, RelationReviewRequest, RelationSummary, ReviewArticleTitleDecisionRequest, ReviewBatchDecisionRequest, ReviewDecisionRequest, ReviewDetail, ReviewItemDecisionRequest, ReviewQueuePage
 from knowledge.config import KnowledgePaths
 from knowledge.management import KnowledgeManagementService
 from knowledge.metadata_service import KnowledgeMetadataService, MetadataConflictError
@@ -188,33 +188,36 @@ def publish_job(job_id: str, payload: JobPublishRequest, session: Session = Depe
     raise HTTPException(status_code=409, detail="V2请在制度治理页创建全局索引快照并确认Alias发布")
 
 
-@router.get("/reviews", response_model=list[ReviewQueueItem])
-def review_queue(include_history: bool = False, session: Session = Depends(get_db_session), _principal: Principal = Depends(require_permission("admin.access"))) -> list[ReviewQueueItem]:
-    reader = knowledge_reader()
-    jobs = list(session.scalars(select(IngestionJob).order_by(IngestionJob.updated_at.desc())).all()) if include_history else ReviewService(session, ingestion(session), management(), reader).queue()
-    items: list[ReviewQueueItem] = []
-    for job in jobs:
-        targets: list[tuple[str, int]] = []
-        if include_history:
-            if job.parse_run_id is not None:
-                targets.append(("PARSE_RUN", job.parse_run_id))
-            if job.chunk_run_id is not None:
-                targets.append(("CHUNK_RUN", job.chunk_run_id))
-        else:
-            target_type = "PARSE_RUN" if job.state == "PARSE_REVIEW" else "CHUNK_RUN"
-            target_id = job.parse_run_id if target_type == "PARSE_RUN" else job.chunk_run_id
-            if target_id is not None:
-                targets.append((target_type, target_id))
-        for target_type, target_id in targets:
-            detail = reader.review_detail(target_type, target_id)
-            pending_count = sum(1 for item in detail["issues"] if not item.get("resolved"))
-            review_objects = [*detail["nodes"], *detail["chunks"]]
-            pending_count += sum(
-                1 for item in review_objects
-                if str(item.get("review_status", "")).lower() == "pending"
-            )
-            items.append(ReviewQueueItem(target_type=target_type, target_id=str(target_id), job_id=job.id, document_id=job.document_id, title=job.task_name, state=job.state, issue_count=pending_count, created_at=job.created_at))
-    return items
+@router.get("/reviews", response_model=ReviewQueuePage)
+def review_queue(
+    include_history: bool = True,
+    processing_status: Literal["PENDING", "PROCESSED"] | None = None,
+    target_type: Literal["PARSE_RUN", "CHUNK_RUN"] | None = None,
+    keyword: str | None = None,
+    review_state: Literal["ACTION_REQUIRED", "READY_TO_SUBMIT", "PASS", "PASS_WITH_WARNING", "REJECT", "FAILED"] | None = None,
+    sort_by: Literal["UPDATED_DESC", "OLDEST_PENDING", "TITLE_ASC"] = "UPDATED_DESC",
+    page: int = 1,
+    page_size: int = 10,
+    session: Session = Depends(get_db_session),
+    _principal: Principal = Depends(require_permission("admin.access")),
+) -> ReviewQueuePage:
+    """返回服务端筛选分页的审核运行，正式页面固定每页十条。"""
+
+    if page < 1 or page_size != 10:
+        raise HTTPException(status_code=422, detail="审核运行列表固定每页10条")
+    result = ReviewService(
+        session, ingestion(session), management(), knowledge_reader()
+    ).search_queue(
+        include_history=include_history,
+        processing_status=processing_status,
+        target_type=target_type,
+        keyword=keyword,
+        review_state=review_state,
+        sort_by=sort_by,
+        page=page,
+        page_size=page_size,
+    )
+    return ReviewQueuePage.model_validate(result)
 
 
 @router.get("/reviews/{job_id}", response_model=ReviewDetail)
@@ -266,6 +269,39 @@ def review_item_decision(job_id: str, payload: ReviewItemDecisionRequest, sessio
         raise HTTPException(status_code=403, detail="当前用户无权审核该运行")
     try:
         return ReviewService(session, ingestion(session), management(), knowledge_reader()).decide_item(job_id, payload.target_type, payload.target_id, payload.action, payload.comment, payload.corrected_value, principal.user_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (ReviewConflictError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/reviews/{job_id}/items/batch-decision")
+def review_batch_decision(job_id: str, payload: ReviewBatchDecisionRequest, session: Session = Depends(get_db_session), principal: Principal = Depends(require_permission("admin.access", csrf=True))):
+    """批量操作限定在一个当前运行内，并在知识库中原子提交。"""
+
+    job = session.get(IngestionJob, job_id)
+    permission = "knowledge.chunk.review" if payload.target_type == "chunk_issue" else "knowledge.parse.review"
+    if permission not in principal.permissions:
+        raise HTTPException(status_code=403, detail="当前用户无权批量审核该运行")
+    try:
+        return ReviewService(session, ingestion(session), management(), knowledge_reader()).decide_items(
+            job_id, payload.target_type, payload.target_ids, payload.action,
+            payload.comment, principal.user_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (ReviewConflictError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/reviews/{job_id}/article-title-decision")
+def review_article_title_decision(job_id: str, payload: ReviewArticleTitleDecisionRequest, session: Session = Depends(get_db_session), principal: Principal = Depends(require_permission("knowledge.parse.review", csrf=True))):
+    """人工确认启发式条标题，不对已批准历史运行做原位修改。"""
+
+    try:
+        return ReviewService(session, ingestion(session), management(), knowledge_reader()).decide_article_title(
+            job_id, payload.node_id, payload.mode, payload.title, payload.comment, principal.user_id
+        )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (ReviewConflictError, ValueError) as exc:
@@ -327,11 +363,28 @@ def evidence_catalog(keyword: str | None = None, _principal: Principal = Depends
 
 
 @router.get("/knowledge/documents")
-def managed_documents(session: Session = Depends(get_db_session), _principal: Principal = Depends(require_permission("admin.access"))):
-    """列出全部正式文件版本及其最新元数据治理状态。"""
+def managed_documents(
+    keyword: str | None = None,
+    metadata_status: Literal["ACTION_REQUIRED", "DRAFT", "PENDING_REVIEW", "APPROVED", "PUBLISHED", "REJECTED"] | None = None,
+    sort_by: Literal["ACTION_REQUIRED", "UPDATED_DESC", "PUBLISH_DATE_DESC", "TITLE_ASC"] = "ACTION_REQUIRED",
+    page: int = 1,
+    page_size: int = 10,
+    session: Session = Depends(get_db_session),
+    _principal: Principal = Depends(require_permission("admin.access")),
+):
+    """按治理优先级列出正式文件版本，正式页面固定每页十条。"""
+
+    if page < 1 or page_size != 10:
+        raise HTTPException(status_code=422, detail="制度治理列表固定每页10条")
 
     with KnowledgeMetadataService(get_settings().knowledge_database_path) as knowledge:
-        return MetadataApplicationService(session, knowledge, ingestion(session)).list()
+        return MetadataApplicationService(session, knowledge, ingestion(session)).search(
+            keyword=keyword,
+            metadata_status=metadata_status,
+            sort_by=sort_by,
+            page=page,
+            page_size=page_size,
+        )
 
 
 @router.get("/knowledge/series")
