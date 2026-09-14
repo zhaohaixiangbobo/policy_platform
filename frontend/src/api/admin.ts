@@ -29,6 +29,8 @@ export interface IngestionJob {
 export interface JobListResponse {
   items: IngestionJob[];
   total: number;
+  page: number;
+  page_size: 10;
   counts: Record<string, number>;
 }
 
@@ -101,8 +103,10 @@ export interface ProcessSummary {
   updated_at: string;
 }
 
-export function listJobs(state?: string) {
-  return requestJson<JobListResponse>(`/api/v1/admin/jobs${state ? `?state=${encodeURIComponent(state)}` : ''}`);
+export function listJobs(state?: string, page = 1) {
+  const query = new URLSearchParams({ page: String(page), page_size: '10' });
+  if (state) query.set('state', state);
+  return requestJson<JobListResponse>(`/api/v1/admin/jobs?${query.toString()}`);
 }
 
 export interface JobDetail {
@@ -228,7 +232,7 @@ export const listManagedDocuments = (params?: { keyword?: string; metadata_statu
 export const getManagedDocument = (documentId: number) => requestJson<ManagedDocumentDetail>(`/api/v1/admin/knowledge/documents/${documentId}/metadata`);
 export const listPolicySeries = () => requestJson<PolicySeries[]>('/api/v1/admin/knowledge/series');
 export const assignPolicySeries = (documentId: number, payload: { series_id: number | null; canonical_title?: string }) => requestJson<Record<string, unknown>>(`/api/v1/admin/knowledge/documents/${documentId}/series`, { method: 'PUT', body: JSON.stringify(payload) });
-export const createMetadataDraft = (documentId: number, requestType: 'CORRECTION' | 'REPEAL', changeReason?: string) => requestJson<{ revision: MetadataRevision }>(`/api/v1/admin/knowledge/documents/${documentId}/metadata/drafts`, { method: 'POST', body: JSON.stringify({ request_type: requestType, change_reason: changeReason }) });
+export const createMetadataDraft = (documentId: number, requestType: 'CORRECTION' | 'REPEAL' | 'EXPIRY', changeReason?: string) => requestJson<{ revision: MetadataRevision }>(`/api/v1/admin/knowledge/documents/${documentId}/metadata/drafts`, { method: 'POST', body: JSON.stringify({ request_type: requestType, change_reason: changeReason }) });
 export const updateMetadataRevision = (documentId: number, revisionId: number, payload: Partial<MetadataRevision>) => requestJson<MetadataRevision>(`/api/v1/admin/knowledge/documents/${documentId}/metadata/${revisionId}`, { method: 'PUT', body: JSON.stringify(payload) });
 export const submitMetadataRevision = (documentId: number, revisionId: number) => requestJson<Record<string, unknown>>(`/api/v1/admin/knowledge/documents/${documentId}/metadata/${revisionId}/submit`, { method: 'POST' });
 export const reviewMetadataRevision = (documentId: number, revisionId: number, approved: boolean, comment?: string) => requestJson<Record<string, unknown>>(`/api/v1/admin/knowledge/documents/${documentId}/metadata/${revisionId}/review`, { method: 'POST', body: JSON.stringify({ approved, comment }) });

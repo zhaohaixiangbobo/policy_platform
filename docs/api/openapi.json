@@ -1,6 +1,20 @@
 {
   "components": {
     "schemas": {
+      "AllDocumentSelection": {
+        "additionalProperties": false,
+        "description": "用户明确选择全部可访问制度。",
+        "properties": {
+          "mode": {
+            "const": "ALL",
+            "default": "ALL",
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "AllDocumentSelection",
+        "type": "object"
+      },
       "AuthProviderSummary": {
         "properties": {
           "enabled": {
@@ -157,6 +171,24 @@
             "title": "Content",
             "type": "string"
           },
+          "document_selection": {
+            "discriminator": {
+              "mapping": {
+                "ALL": "#/components/schemas/AllDocumentSelection",
+                "SELECTED": "#/components/schemas/SelectedDocumentSelection"
+              },
+              "propertyName": "mode"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AllDocumentSelection"
+              },
+              {
+                "$ref": "#/components/schemas/SelectedDocumentSelection"
+              }
+            ],
+            "title": "Document Selection"
+          },
           "query_scope": {
             "default": "CURRENT",
             "enum": [
@@ -191,6 +223,18 @@
       },
       "ChatMessageResponse": {
         "properties": {
+          "access_scope_count": {
+            "title": "Access Scope Count",
+            "type": "integer"
+          },
+          "access_scope_hash": {
+            "title": "Access Scope Hash",
+            "type": "string"
+          },
+          "access_scope_version": {
+            "title": "Access Scope Version",
+            "type": "string"
+          },
           "answer_status": {
             "anyOf": [
               {
@@ -241,6 +285,14 @@
             "title": "Created At",
             "type": "string"
           },
+          "document_selection_mode": {
+            "enum": [
+              "ALL",
+              "SELECTED"
+            ],
+            "title": "Document Selection Mode",
+            "type": "string"
+          },
           "engine_request_id": {
             "anyOf": [
               {
@@ -277,6 +329,17 @@
               }
             ]
           },
+          "query_index_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Index Run Id"
+          },
           "query_scope": {
             "enum": [
               "CURRENT",
@@ -289,6 +352,14 @@
             "title": "Request Id",
             "type": "string"
           },
+          "resolved_document_scope_mode": {
+            "enum": [
+              "ALL",
+              "SELECTED"
+            ],
+            "title": "Resolved Document Scope Mode",
+            "type": "string"
+          },
           "role": {
             "enum": [
               "user",
@@ -296,6 +367,13 @@
             ],
             "title": "Role",
             "type": "string"
+          },
+          "selected_document_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Selected Document Ids",
+            "type": "array"
           },
           "session_id": {
             "title": "Session Id",
@@ -307,6 +385,13 @@
           "session_id",
           "role",
           "query_scope",
+          "document_selection_mode",
+          "selected_document_ids",
+          "resolved_document_scope_mode",
+          "query_index_run_id",
+          "access_scope_version",
+          "access_scope_hash",
+          "access_scope_count",
           "content",
           "answer_status",
           "request_id",
@@ -1854,6 +1939,15 @@
             "title": "Items",
             "type": "array"
           },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "const": 10,
+            "title": "Page Size",
+            "type": "integer"
+          },
           "total": {
             "title": "Total",
             "type": "integer"
@@ -1862,6 +1956,8 @@
         "required": [
           "items",
           "total",
+          "page",
+          "page_size",
           "counts"
         ],
         "title": "JobListResponse",
@@ -2079,7 +2175,8 @@
           "request_type": {
             "enum": [
               "CORRECTION",
-              "REPEAL"
+              "REPEAL",
+              "EXPIRY"
             ],
             "title": "Request Type",
             "type": "string"
@@ -2602,6 +2699,29 @@
         "title": "QualityGateSummary",
         "type": "object"
       },
+      "QueryScopeCapabilitiesResponse": {
+        "properties": {
+          "active_index_run_id": {
+            "title": "Active Index Run Id",
+            "type": "integer"
+          },
+          "current_document_count": {
+            "title": "Current Document Count",
+            "type": "integer"
+          },
+          "historical_document_count": {
+            "title": "Historical Document Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "active_index_run_id",
+          "current_document_count",
+          "historical_document_count"
+        ],
+        "title": "QueryScopeCapabilitiesResponse",
+        "type": "object"
+      },
       "RelationCreateRequest": {
         "properties": {
           "rationale": {
@@ -2830,6 +2950,102 @@
         "title": "RelationSummary",
         "type": "object"
       },
+      "ReviewArticleTitleDecisionRequest": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "mode": {
+            "enum": [
+              "TITLE",
+              "CONTENT"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "node_id": {
+            "minimum": 1.0,
+            "title": "Node Id",
+            "type": "integer"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "node_id",
+          "mode"
+        ],
+        "title": "ReviewArticleTitleDecisionRequest",
+        "type": "object"
+      },
+      "ReviewBatchDecisionRequest": {
+        "properties": {
+          "action": {
+            "enum": [
+              "confirm",
+              "ignore"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "target_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Target Ids",
+            "type": "array"
+          },
+          "target_type": {
+            "enum": [
+              "node",
+              "issue",
+              "chunk_issue"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_ids",
+          "action"
+        ],
+        "title": "ReviewBatchDecisionRequest",
+        "type": "object"
+      },
       "ReviewDecisionRequest": {
         "properties": {
           "comment": {
@@ -3004,6 +3220,29 @@
             "title": "Created At",
             "type": "string"
           },
+          "display_state": {
+            "enum": [
+              "ACTION_REQUIRED",
+              "READY_TO_SUBMIT",
+              "PASS",
+              "PASS_WITH_WARNING",
+              "REJECT",
+              "FAILED"
+            ],
+            "title": "Display State",
+            "type": "string"
+          },
+          "document_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Code"
+          },
           "document_id": {
             "anyOf": [
               {
@@ -3021,6 +3260,29 @@
           },
           "job_id": {
             "title": "Job Id",
+            "type": "string"
+          },
+          "processing_status": {
+            "enum": [
+              "PENDING",
+              "PROCESSED"
+            ],
+            "title": "Processing Status",
+            "type": "string"
+          },
+          "review_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Outcome"
+          },
+          "review_status": {
+            "title": "Review Status",
             "type": "string"
           },
           "state": {
@@ -3042,6 +3304,11 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
           }
         },
         "required": [
@@ -3050,11 +3317,83 @@
           "job_id",
           "document_id",
           "title",
+          "document_code",
           "state",
           "issue_count",
-          "created_at"
+          "review_status",
+          "processing_status",
+          "review_outcome",
+          "display_state",
+          "created_at",
+          "updated_at"
         ],
         "title": "ReviewQueueItem",
+        "type": "object"
+      },
+      "ReviewQueuePage": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "const": 10,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "counts"
+        ],
+        "title": "ReviewQueuePage",
+        "type": "object"
+      },
+      "SelectedDocumentSelection": {
+        "additionalProperties": false,
+        "description": "用户明确选择一至二十个具体制度版本。",
+        "properties": {
+          "document_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Document Ids",
+            "type": "array"
+          },
+          "mode": {
+            "const": "SELECTED",
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "document_ids"
+        ],
+        "title": "SelectedDocumentSelection",
         "type": "object"
       },
       "ValidationError": {
@@ -3403,6 +3742,7 @@
     },
     "/api/v1/admin/jobs": {
       "get": {
+        "description": "返回服务端分页的入库任务，任务中心固定每页十条。",
         "operationId": "list_jobs_api_v1_admin_jobs_get",
         "parameters": [
           {
@@ -3419,6 +3759,26 @@
                 }
               ],
               "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "title": "Page Size",
+              "type": "integer"
             }
           }
         ],
@@ -3681,8 +4041,86 @@
     },
     "/api/v1/admin/knowledge/documents": {
       "get": {
-        "description": "列出全部正式文件版本及其最新元数据治理状态。",
+        "description": "按治理优先级列出正式文件版本，正式页面固定每页十条。",
         "operationId": "managed_documents_api_v1_admin_knowledge_documents_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metadata_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ACTION_REQUIRED",
+                    "DRAFT",
+                    "PENDING_REVIEW",
+                    "APPROVED",
+                    "PUBLISHED",
+                    "REJECTED"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metadata Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_by",
+            "required": false,
+            "schema": {
+              "default": "ACTION_REQUIRED",
+              "enum": [
+                "ACTION_REQUIRED",
+                "UPDATED_DESC",
+                "PUBLISH_DATE_DESC",
+                "TITLE_ASC"
+              ],
+              "title": "Sort By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3691,6 +4129,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Managed Documents",
@@ -4813,6 +5261,7 @@
     },
     "/api/v1/admin/reviews": {
       "get": {
+        "description": "返回服务端筛选分页的审核运行，正式页面固定每页十条。",
         "operationId": "review_queue_api_v1_admin_reviews_get",
         "parameters": [
           {
@@ -4820,9 +5269,124 @@
             "name": "include_history",
             "required": false,
             "schema": {
-              "default": false,
+              "default": true,
               "title": "Include History",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "processing_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "PENDING",
+                    "PROCESSED"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Processing Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "PARSE_RUN",
+                    "CHUNK_RUN"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            }
+          },
+          {
+            "in": "query",
+            "name": "review_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ACTION_REQUIRED",
+                    "READY_TO_SUBMIT",
+                    "PASS",
+                    "PASS_WITH_WARNING",
+                    "REJECT",
+                    "FAILED"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Review State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_by",
+            "required": false,
+            "schema": {
+              "default": "UPDATED_DESC",
+              "enum": [
+                "UPDATED_DESC",
+                "OLDEST_PENDING",
+                "TITLE_ASC"
+              ],
+              "title": "Sort By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "title": "Page Size",
+              "type": "integer"
             }
           }
         ],
@@ -4831,11 +5395,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ReviewQueueItem"
-                  },
-                  "title": "Response Review Queue Api V1 Admin Reviews Get",
-                  "type": "array"
+                  "$ref": "#/components/schemas/ReviewQueuePage"
                 }
               }
             },
@@ -4916,6 +5476,57 @@
         ]
       }
     },
+    "/api/v1/admin/reviews/{job_id}/article-title-decision": {
+      "post": {
+        "description": "人工确认启发式条标题，不对已批准历史运行做原位修改。",
+        "operationId": "review_article_title_decision_api_v1_admin_reviews__job_id__article_title_decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewArticleTitleDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Article Title Decision",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/reviews/{job_id}/decision": {
       "post": {
         "operationId": "review_decision_api_v1_admin_reviews__job_id__decision_post",
@@ -4961,6 +5572,57 @@
           }
         },
         "summary": "Review Decision",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews/{job_id}/items/batch-decision": {
+      "post": {
+        "description": "批量操作限定在一个当前运行内，并在知识库中原子提交。",
+        "operationId": "review_batch_decision_api_v1_admin_reviews__job_id__items_batch_decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewBatchDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Batch Decision",
         "tags": [
           "admin"
         ]
@@ -5289,6 +5951,28 @@
           }
         },
         "summary": "Submit Feedback",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/query-capabilities": {
+      "get": {
+        "description": "返回当前用户在active IndexRun中可使用的状态范围。",
+        "operationId": "query_capabilities_api_v1_chat_query_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryScopeCapabilitiesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Query Capabilities",
         "tags": [
           "chat"
         ]
@@ -5787,6 +6471,26 @@
                 }
               ],
               "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query_scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "CURRENT",
+                    "HISTORICAL"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query Scope"
             }
           },
           {

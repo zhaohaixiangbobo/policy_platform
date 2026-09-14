@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any
 
+from knowledge.metadata_rules import required_status_for_source, status_transition_error
 from knowledge.parser.database import ParserDatabase, utc_now
 
 
@@ -166,18 +168,18 @@ class KnowledgeMetadataService:
         active_parse_run_id = document.get("active_parse_run_id")
         if active_parse_run_id is None:
             raise MetadataConflictError("制度尚无已批准的active ParseRun，不能创建元数据草稿")
-        if source_type in {"MANUAL_CORRECTION", "REPEAL"} and not (
+        if source_type in {"MANUAL_CORRECTION", "REPEAL", "EXPIRY"} and not (
             document.get("approved_metadata_revision_id")
             or document.get("active_metadata_revision_id")
         ):
             raise MetadataConflictError("制度尚无已批准元数据，不能创建修订或登记废止")
-        if source_type == "REPEAL":
+        if source_type in {"REPEAL", "EXPIRY"}:
             active_revision_id = document.get("active_metadata_revision_id")
             if active_revision_id is None:
-                raise MetadataConflictError("制度尚未正式发布，不能登记废止")
+                raise MetadataConflictError("制度尚未正式发布，不能登记废止或失效")
             active_revision = self._revision(int(active_revision_id))
             if str(active_revision.get("status") or "").lower() != "effective":
-                raise MetadataConflictError("只有现行有效制度可以登记废止")
+                raise MetadataConflictError("只有现行有效制度可以登记废止或失效")
         latest_id = document.get("latest_metadata_revision_id")
         if latest_id:
             latest = self._revision(int(latest_id))
@@ -219,6 +221,18 @@ class KnowledgeMetadataService:
                 if same_initial or (
                     initial_document_status is None and latest.get("source_type") == source_type
                 ):
+                    required_status = required_status_for_source(source_type)
+                    draft_updates: dict[str, Any] = {}
+                    if (
+                        required_status is not None
+                        and str(latest.get("status") or "").lower() != required_status
+                    ):
+                        draft_updates["status"] = required_status
+                    if source_type == "REPEAL" and not latest.get("repeal_date"):
+                        draft_updates["repeal_date"] = date.today().isoformat()
+                    if draft_updates:
+                        # 旧版本创建的错误草稿仍可在提交前按新契约安全归正。
+                        return self.update_draft(document_id, int(latest_id), draft_updates)
                     return latest
                 raise MetadataConflictError(
                     f"当前存在待处理的 {latest.get('source_type')} 草稿，不能创建 {source_type} 修订"
@@ -236,6 +250,11 @@ class KnowledgeMetadataService:
                     raise ValueError("上传声明值不是受支持的制度状态")
                 # 仅首份 INITIAL 草稿采用上传声明，后续修订始终继承已审核元数据。
                 values["status"] = initial_document_status
+        required_status = required_status_for_source(source_type)
+        if required_status is not None:
+            # 生命周期动作在创建草稿时即写入确定状态，不继承原制度的effective。
+            values["status"] = required_status
+        repeal_date = date.today().isoformat() if source_type == "REPEAL" else None
         next_no = int(self.db.connection.execute(
             "SELECT COALESCE(MAX(revision_no), 0) + 1 FROM document_metadata_revision WHERE document_id=?",
             (document_id,),
@@ -251,14 +270,14 @@ class KnowledgeMetadataService:
                     title, document_code, document_type, issuing_org, addressee_text,
                     authority_level, publish_date, effective_date, expiry_date, status,
                     version, owner_department, confidentiality_level, lifecycle_status,
-                    change_reason, content_hash, created_by, created_at, updated_at
+                    change_reason, repeal_date, content_hash, created_by, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          'DRAFT', ?, ?, ?, ?, ?)
+                          'DRAFT', ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     document_id, parse_run_id, next_no, parent_revision_id, source_type,
                     *(values[field] for field in METADATA_FIELDS),
-                    change_reason, content_hash, actor_user_id, now, now,
+                    change_reason, repeal_date, content_hash, actor_user_id, now, now,
                 ),
             )
             revision_id = int(cursor.lastrowid)
@@ -277,6 +296,20 @@ class KnowledgeMetadataService:
             raise ValueError(f"包含不支持的元数据字段：{sorted(unknown)}")
         merged = dict(revision)
         merged.update(values)
+        transition_error = status_transition_error(
+            str(revision.get("source_type") or ""), merged.get("status")
+        )
+        if transition_error:
+            raise MetadataConflictError(transition_error)
+        if revision.get("source_type") == "MANUAL_CORRECTION" and "status" in values:
+            parent_id = revision.get("parent_revision_id")
+            parent_status = (
+                str(self._revision(int(parent_id)).get("status") or "unknown").lower()
+                if parent_id is not None
+                else str(revision.get("status") or "unknown").lower()
+            )
+            if str(merged.get("status") or "unknown").lower() != parent_status:
+                raise MetadataConflictError("制度效力状态必须通过登记废止或登记失效流程变更")
         metadata = {field: merged.get(field) for field in METADATA_FIELDS}
         assignments = [f"{field}=?" for field in values]
         now = utc_now()
@@ -303,6 +336,7 @@ class KnowledgeMetadataService:
         status = str(revision.get("status") or "unknown").strip().lower()
         if status == "unknown" and not str(revision.get("status_confirmation_note") or "").strip():
             raise MetadataConflictError("制度状态为待确认时必须填写保留原因")
+        self._validate_lifecycle_revision(revision, require_details=True)
         return self._set_lifecycle(revision_id, "PENDING_REVIEW")
 
     def review(
@@ -320,6 +354,8 @@ class KnowledgeMetadataService:
         target = "APPROVED" if approved else "REJECTED"
         if not approved and not str(comment or "").strip():
             raise MetadataConflictError("驳回元数据必须填写原因")
+        if approved:
+            self._validate_lifecycle_revision(revision, require_details=True)
         with self.db.transaction():
             self.db.connection.execute(
                 """
@@ -339,6 +375,57 @@ class KnowledgeMetadataService:
                     (revision_id, now, document_id),
                 )
         return self._revision(revision_id)
+
+    @staticmethod
+    def _validate_lifecycle_revision(
+        revision: dict[str, Any], *, require_details: bool
+    ) -> None:
+        """保证废止和失效修订在提交、审核时仍满足完整业务契约。"""
+
+        source_type = str(revision.get("source_type") or "")
+        transition_error = status_transition_error(source_type, revision.get("status"))
+        if transition_error:
+            raise MetadataConflictError(transition_error)
+        if not require_details:
+            return
+        if source_type == "REPEAL":
+            missing = [
+                label
+                for field, label in (
+                    ("repeal_date", "废止日期"),
+                    ("repeal_reason", "废止原因"),
+                    ("repeal_evidence", "废止依据"),
+                )
+                if not str(revision.get(field) or "").strip()
+            ]
+            if missing:
+                raise MetadataConflictError(f"登记废止尚缺少：{'、'.join(missing)}")
+            KnowledgeMetadataService._validate_iso_date(
+                revision.get("repeal_date"), "废止日期"
+            )
+        elif source_type == "EXPIRY":
+            missing = [
+                label
+                for field, label in (
+                    ("expiry_date", "失效日期"),
+                    ("change_reason", "失效说明"),
+                )
+                if not str(revision.get(field) or "").strip()
+            ]
+            if missing:
+                raise MetadataConflictError(f"登记失效尚缺少：{'、'.join(missing)}")
+            KnowledgeMetadataService._validate_iso_date(
+                revision.get("expiry_date"), "失效日期"
+            )
+
+    @staticmethod
+    def _validate_iso_date(value: Any, label: str) -> None:
+        """审核边界统一接受 YYYY-MM-DD，避免浏览器以外的调用写入任意文本。"""
+
+        try:
+            date.fromisoformat(str(value))
+        except (TypeError, ValueError) as exc:
+            raise MetadataConflictError(f"{label}必须是YYYY-MM-DD格式") from exc
 
     def _set_lifecycle(self, revision_id: int, lifecycle_status: str) -> dict[str, Any]:
         now = utc_now()

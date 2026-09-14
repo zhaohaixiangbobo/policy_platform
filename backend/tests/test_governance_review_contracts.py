@@ -82,6 +82,35 @@ def test_governance_search_status_sort_and_fixed_page_size() -> None:
     session.close()
 
 
+def test_task_center_uses_server_pagination_and_filtered_total() -> None:
+    """任务中心每页十条，状态筛选后的总数与当前结果保持一致。"""
+
+    session = _session()
+    root = Path(os.environ["POLICY_TEST_RUNTIME_ROOT"]).resolve() / uuid4().hex
+    paths = KnowledgePaths(root / "knowledge")
+    for index in range(12):
+        session.add(IngestionJob(
+            task_name=f"任务{index:02d}",
+            original_filename=f"{index}.docx",
+            stored_path=f"pending/{index}.docx",
+            file_sha256=f"{index:064d}",
+            state="UPLOADED" if index < 7 else "FAILED",
+            created_by="reviewer",
+        ))
+    session.commit()
+    service = IngestionService(session, paths)
+
+    first_items, first_total, counts = service.list_jobs(page=1, page_size=10)
+    second_items, second_total, _ = service.list_jobs(page=2, page_size=10)
+    filtered_items, filtered_total, _ = service.list_jobs("FAILED", page=1, page_size=10)
+
+    assert first_total == second_total == 12
+    assert len(first_items) == 10 and len(second_items) == 2
+    assert filtered_total == 5 and len(filtered_items) == 5
+    assert counts == {"FAILED": 5, "UPLOADED": 7}
+    session.close()
+
+
 def test_parse_batch_confirmation_is_atomic_and_excludes_blocking_errors() -> None:
     root = Path(os.environ["POLICY_TEST_RUNTIME_ROOT"]).resolve() / uuid4().hex
     database_path = root / "knowledge" / "policy_parser.db"

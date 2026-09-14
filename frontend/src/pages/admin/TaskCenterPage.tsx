@@ -2,7 +2,7 @@
  * 文件说明：实现基于真实入库任务数据的统计、筛选、列表和DOCX上传入口。
  */
 import { CheckCircleOutlined, ClockCircleOutlined, CloudUploadOutlined, ExclamationCircleOutlined, FileAddOutlined, InboxOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Descriptions, Drawer, Empty, Form, Input, List, Modal, Select, Space, Table, Tag, Timeline, Typography, Upload, message } from 'antd';
+import { Button, Card, Descriptions, Drawer, Empty, Form, Input, List, Modal, Select, Space, Table, Tag, Timeline, Typography, Upload, message } from 'antd';
 import type { UploadFile } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -20,9 +20,10 @@ const stateLabels: Record<string, string> = {
 const stateColor = (state: string) => state === 'PUBLISHED' ? 'success' : state === 'FAILED' || state === 'REJECTED' ? 'error' : state.includes('REVIEW') || state === 'READY_TO_PUBLISH' ? 'warning' : 'processing';
 
 export function TaskCenterPage() {
-  const [data, setData] = useState<JobListResponse>({ items: [], total: 0, counts: {} });
+  const [data, setData] = useState<JobListResponse>({ items: [], total: 0, page: 1, page_size: 10, counts: {} });
   const [loading, setLoading] = useState(true);
   const [state, setState] = useState<string>();
+  const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [detail, setDetail] = useState<JobDetail | null>(null);
@@ -32,25 +33,29 @@ export function TaskCenterPage() {
 
   const refresh = async () => {
     setLoading(true);
-    try { setData(await listJobs(state)); } catch (error) { message.error(error instanceof Error ? error.message : '任务加载失败'); }
+    try { setData(await listJobs(state, page)); } catch (error) { message.error(error instanceof Error ? error.message : '任务加载失败'); }
     finally { setLoading(false); }
   };
   useEffect(() => {
     void refresh();
     const timer = window.setInterval(() => {
-      void listJobs(state).then(setData).catch(() => undefined);
+      void listJobs(state, page).then(setData).catch(() => undefined);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [state]);
+  }, [state, page]);
 
+  const allTaskCount = useMemo(
+    () => Object.values(data.counts).reduce((sum, count) => sum + count, 0),
+    [data.counts],
+  );
   const stats = useMemo(() => [
-    { title: '全部任务', value: data.total, icon: InboxOutlined, tone: 'blue' },
+    { title: '全部任务', value: allTaskCount, icon: InboxOutlined, tone: 'blue' },
     { title: '待处理', value: (data.counts.UPLOADED ?? 0) + (data.counts.PARSE_QUEUED ?? 0) + (data.counts.CHUNK_QUEUED ?? 0), icon: ClockCircleOutlined, tone: 'orange' },
     { title: '处理中', value: ['PREFLIGHTING', 'PARSING', 'CHUNKING', 'INDEXING', 'PUBLISHING'].reduce((sum, key) => sum + (data.counts[key] ?? 0), 0), icon: CloudUploadOutlined, tone: 'blue' },
     { title: '待审核/发布', value: ['PARSE_REVIEW', 'METADATA_REVIEW', 'CHUNK_REVIEW', 'READY_FOR_INDEX', 'READY_TO_PUBLISH'].reduce((sum, key) => sum + (data.counts[key] ?? 0), 0), icon: ExclamationCircleOutlined, tone: 'orange' },
     { title: '已完成', value: data.counts.PUBLISHED ?? 0, icon: CheckCircleOutlined, tone: 'green' },
     { title: '已驳回/失败', value: (data.counts.REJECTED ?? 0) + (data.counts.FAILED ?? 0), icon: ExclamationCircleOutlined, tone: 'red' },
-  ], [data]);
+  ], [allTaskCount, data.counts]);
 
   const submitUpload = async () => {
     const rawFiles = files.flatMap((item) => item.originFileObj ? [item.originFileObj] : []);
@@ -70,7 +75,8 @@ export function TaskCenterPage() {
         message.destroy('batch-upload');
       }
       message.success(`已创建 ${rawFiles.length} 个独立入库任务`);
-      setModalOpen(false); setFiles([]); form.resetFields(); await refresh();
+      setModalOpen(false); setFiles([]); form.resetFields(); setPage(1);
+      if (page === 1) await refresh();
     } catch (error) { message.destroy('batch-upload'); if (error instanceof Error) message.error(error.message); }
     finally { setUploading(false); }
   };
@@ -88,11 +94,24 @@ export function TaskCenterPage() {
   return (
     <div className="admin-page task-center-page">
       <div className="admin-page-title"><div><Typography.Title level={2}>任务中心</Typography.Title><Typography.Text type="secondary">统一跟踪制度上传、解析、分块、索引和发布状态</Typography.Text></div><Space><Button icon={<UiIcon icon={ReloadOutlined} />} onClick={() => void refresh()}>刷新</Button><Button type="primary" icon={<UiIcon icon={FileAddOutlined} />} onClick={() => setModalOpen(true)}>新建入库任务</Button></Space></div>
-      <Alert showIcon type="info" message="审核完成后由制度治理页统一构建全局索引快照" description="单份或批量文件都保持独立任务。元数据和Chunk审核完成后进入“可纳入索引”，管理员在制度治理页选择本次变更；Worker完成Embedding与Qdrant核验后，再显式确认Alias切换。" />
       <div className="task-stats">{stats.map((item) => <Card className={`task-stat task-stat-${item.tone}`} key={item.title}><div><small>{item.title}</small><strong>{item.value}</strong></div><span><UiIcon icon={item.icon} /></span></Card>)}</div>
       <Card className="admin-table-card" variant="borderless">
-        <div className="admin-filter-bar"><Select allowClear placeholder="全部状态" value={state} onChange={setState} options={Object.entries(stateLabels).map(([value, label]) => ({ value, label }))} style={{ width: 180 }} /><Typography.Text type="secondary">共 {data.total} 条任务</Typography.Text></div>
-        <Table<IngestionJob> rowKey="id" loading={loading} columns={columns} dataSource={data.items} pagination={{ pageSize: 20 }} locale={{ emptyText: <Empty description="尚无入库任务，请上传第一份DOCX制度" /> }} />
+        <div className="admin-filter-bar"><Select allowClear placeholder="全部状态" value={state} onChange={(value) => { setState(value); setPage(1); }} options={Object.entries(stateLabels).map(([value, label]) => ({ value, label }))} style={{ width: 180 }} /><Typography.Text type="secondary">共 {data.total} 条任务</Typography.Text></div>
+        <Table<IngestionJob>
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={data.items}
+          pagination={{
+            current: data.page,
+            pageSize: 10,
+            total: data.total,
+            showSizeChanger: false,
+            showTotal: (total) => `共 ${total} 条`,
+            onChange: setPage,
+          }}
+          locale={{ emptyText: <Empty description="尚无入库任务，请上传第一份DOCX制度" /> }}
+        />
       </Card>
       <Modal title="新建制度入库任务" open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => void submitUpload()} okText="创建任务" confirmLoading={uploading}>
         <Form form={form} layout="vertical" initialValues={{ initialDocumentStatus: 'effective' }}><Form.Item label="任务/批次名称" name="taskName"><Input placeholder="不填写时使用文件名或当前时间" /></Form.Item><Form.Item label="制度状态（上传声明值）" name="initialDocumentStatus" tooltip="只表示上传时的初始声明，仍需在元数据审核中确认。"><Select options={[{ value: 'effective', label: '现行有效（默认）' }, { value: 'repealed', label: '已废止' }, { value: 'expired', label: '已失效' }]} /></Form.Item></Form>

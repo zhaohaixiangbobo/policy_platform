@@ -8,10 +8,9 @@
 |---|---|---|
 | React 开发服务器 | `http://127.0.0.1:5173` | 浏览器入口 |
 | React 生产预览 | `http://127.0.0.1:4173` | 构建产物冒烟 |
-| RAG API | `http://127.0.0.1:8010` | 独立问答引擎公开契约 |
 | Platform API | `http://127.0.0.1:8020` | Platform 业务与管理 API |
 
-问答联调必须启动独立 8010。Platform 只配置 `PLATFORM_RAG_API_URL`，不配置或调用 RAG 内部的 Qdrant、Embedding、Reranker 和 Generator。
+问答由 Platform 8020 进程内的 `KnowledgeService` 执行，不需要独立 8010。Platform 启动时不连接外部知识依赖，首次问答才按 `POLICY_QDRANT_URL`、`POLICY_EMBEDDING_URL`、`POLICY_RERANK_URL` 和 `POLICY_GENERATOR_URL` 惰性初始化。
 
 质量门禁由 `POLICY_QUALITY_GATE_ENABLED` 控制，默认 `false`。设为 `true` 并重启后端后，才会执行回答覆盖和额外语义支撑校验。
 
@@ -25,8 +24,6 @@ POLICY_LIBREOFFICE_PATH=C:\Program Files\LibreOffice\program\soffice.exe
 ## 启动
 
 ```powershell
-Set-Location 'D:\2-code\rag'
-& 'D:\3-anaconda\envs\py312\python.exe' run_rag_api.py
 & 'D:\2-code\policy-platform\scripts\dev-backend.ps1'
 & 'D:\2-code\policy-platform\scripts\dev-frontend.ps1'
 & 'D:\2-code\policy-platform\scripts\dev-worker.ps1'

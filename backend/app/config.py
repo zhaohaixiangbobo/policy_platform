@@ -21,8 +21,6 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{DEFAULT_PLATFORM_DATABASE.as_posix()}"
     knowledge_data_root: Path = DEFAULT_KNOWLEDGE_DATA_ROOT
     rag_diagnostics_enabled: bool = False
-    rag_api_url: str = "http://127.0.0.1:8010"
-    rag_api_connect_timeout_seconds: float = 5.0
     session_cookie_name: str = "policy_platform_session"
     session_ttl_hours: int = 8
     cookie_secure: bool = False

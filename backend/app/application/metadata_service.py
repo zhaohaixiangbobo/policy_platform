@@ -103,12 +103,17 @@ class MetadataApplicationService:
         request_type: str,
         change_reason: str | None,
     ) -> dict:
-        if request_type not in {"CORRECTION", "REPEAL"}:
-            raise ValueError("人工创建只支持元数据修订或制度废止")
+        source_types = {
+            "CORRECTION": "MANUAL_CORRECTION",
+            "REPEAL": "REPEAL",
+            "EXPIRY": "EXPIRY",
+        }
+        if request_type not in source_types:
+            raise ValueError("人工创建只支持元数据修订、制度废止或制度失效")
         revision = self.knowledge.ensure_draft(
             document_id,
             actor_user_id,
-            source_type="MANUAL_CORRECTION" if request_type == "CORRECTION" else "REPEAL",
+            source_type=source_types[request_type],
             change_reason=change_reason,
         )
         request = self._ensure_request(

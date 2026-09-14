@@ -1,4 +1,4 @@
-"""文件说明：创建统一FastAPI应用并管理独立 RAG API 客户端生命周期。"""
+"""文件说明：创建统一FastAPI应用并管理进程内知识查询服务生命周期。"""
 
 from contextlib import asynccontextmanager
 import os
@@ -10,18 +10,20 @@ from fastapi.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.config import get_settings
 from app.middleware import RequestIdMiddleware
-from app.infrastructure.rag_api_client import RagApiClient, RagApiClientError
 from app.logging_config import configure_rotating_logger
 from knowledge.catalog import KnowledgeCatalogService
 from knowledge.config import KnowledgePaths
 from knowledge.management import KnowledgeManagementService
+from knowledge.rag.runtime import RagRuntimeSettings
+from knowledge.service import KnowledgeService, KnowledgeServiceError
 from app.application.auth_service import ensure_auth_baseline
+from app.application.query_scope_service import OpenDocumentAccessResolver
 from app.infrastructure.db.session import get_session_factory
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    """装配管理目录和 RAG HTTP 客户端，停止时统一释放连接。"""
+    """装配管理目录和惰性进程内RAG服务，停止时统一释放资源。"""
 
     settings = get_settings()
     configure_rotating_logger(
@@ -39,16 +41,16 @@ async def lifespan(application: FastAPI):
     KnowledgeManagementService(paths).initialize_empty_baseline()
     with get_session_factory()() as session:
         ensure_auth_baseline(session)
-    rag_client = RagApiClient(
-        settings.rag_api_url,
-        connect_timeout_seconds=settings.rag_api_connect_timeout_seconds,
+    knowledge_service = KnowledgeService(
+        RagRuntimeSettings.from_environment(db_path=paths.database_path)
     )
     application.state.knowledge_catalog = KnowledgeCatalogService(paths)
-    application.state.rag_api_client = rag_client
+    application.state.document_access_resolver = OpenDocumentAccessResolver()
+    application.state.knowledge_service = knowledge_service
     try:
         yield
     finally:
-        await rag_client.close()
+        await knowledge_service.close()
 
 
 def create_app() -> FastAPI:
@@ -65,11 +67,11 @@ def create_app() -> FastAPI:
     )
     application.add_middleware(RequestIdMiddleware)
 
-    @application.exception_handler(RagApiClientError)
-    async def handle_rag_api_client_error(
-        request: Request, exc: RagApiClientError
+    @application.exception_handler(KnowledgeServiceError)
+    async def handle_knowledge_service_error(
+        request: Request, exc: KnowledgeServiceError
     ) -> JSONResponse:
-        """将 RAG API 错误转换为 Platform 稳定错误结构。"""
+        """将进程内知识查询错误转换为 Platform 稳定错误结构。"""
 
         return JSONResponse(
             status_code=exc.http_status,

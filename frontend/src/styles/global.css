@@ -1242,6 +1242,57 @@ body {
   box-shadow: 0 8px 28px rgba(36, 91, 219, 0.12);
 }
 
+.chat-sender .ant-sender-content {
+  min-height: 62px;
+  padding: 12px 16px 4px;
+}
+
+.chat-sender .ant-sender-footer {
+  padding: 0 14px 12px;
+}
+
+.composer-toolbar,
+.composer-tools,
+.composer-submit-area {
+  display: flex;
+  align-items: center;
+}
+
+.composer-toolbar {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.composer-tools,
+.composer-submit-area {
+  gap: 10px;
+}
+
+.composer-tool-button {
+  min-height: 34px;
+  color: #245bdb;
+  background: #f5f8ff;
+  border-color: #d9e5fb;
+  border-radius: 10px;
+}
+
+.composer-keyboard-hint {
+  color: #8a94a6;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.composer-submit-button {
+  width: 40px !important;
+  min-width: 40px !important;
+  height: 40px !important;
+  box-shadow: 0 5px 14px rgba(23, 104, 255, 0.25);
+}
+
+.document-picker-search {
+  margin-bottom: 14px;
+}
+
 .composer-hint {
   display: block;
   margin-top: 8px;
@@ -1994,17 +2045,22 @@ body {
 .admin-filter-bar { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 
 /* 审核工作台只呈现真实运行内容；空库阶段展示明确待生成状态。 */
-.review-workbench { display: grid; grid-template-columns: 260px minmax(620px, 1fr) 300px; gap: 14px; min-height: 650px; }
-.review-workbench .ant-card { height: 100%; }
-.review-queue .ant-card-body { padding: 8px; }
+.review-workbench { display: grid; grid-template-columns: 260px minmax(620px, 1fr) 300px; gap: 14px; align-items: start; }
+.review-main-column { min-width: 0; }
+.review-main-column > .ant-card { width: 100%; }
+.review-queue.ant-card { display: flex; flex-direction: column; }
+.review-queue .ant-card-head { flex: none; }
+.review-queue .ant-card-body { display: flex; min-height: 0; flex: 1; flex-direction: column; padding: 8px; }
 .review-queue .ant-input-search { margin-bottom: 10px; }
 .review-queue .ant-segmented { margin-bottom: 10px; }
 .review-type-switch { margin-bottom: 10px; }
 .review-queue-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
 .review-queue-filters .ant-select { width: 100%; }
 .review-queue-total { display: block; padding: 2px 4px 8px; }
-.review-queue .ant-list { max-height: 520px; overflow-y: auto; }
-.review-queue .ant-pagination { display: flex; justify-content: center; margin: 10px 0 2px; }
+.review-queue .ant-spin-nested-loading { min-height: 0; flex: 1; overflow: hidden; }
+.review-queue .ant-spin-container { height: 100%; overflow-y: auto; }
+.review-queue .ant-list { min-height: 100%; }
+.review-queue .ant-pagination { display: flex; flex: none; justify-content: center; margin: auto 0 2px; padding-top: 10px; }
 .review-queue-item { display: grid; gap: 7px; width: 100%; padding: 13px 12px; text-align: left; background: transparent; border: 0; border-radius: 8px; cursor: pointer; }
 .review-queue-item.active { color: #1768ff; background: #edf4ff; }
 .review-queue-item > span { color: #758298; font-size: 12px; }
@@ -2018,6 +2074,9 @@ body {
 .quality-line { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f0f2f6; }
 .quality-line span { color: #77849a; }
 .quality-line strong { margin-left: 12px; white-space: nowrap; }
+.review-quality.ant-card { display: flex; height: var(--review-main-height, auto); flex-direction: column; }
+.review-quality .ant-card-head { flex: none; }
+.review-quality .ant-card-body { min-height: 0; flex: 1; overflow-y: auto; }
 .review-metrics { display: grid; grid-template-columns: repeat(5, minmax(100px, 1fr)); gap: 10px; padding: 16px 0; }
 .review-metrics > div { display: grid; gap: 4px; padding: 12px; background: #f7f9fc; border: 1px solid #edf0f5; border-radius: 8px; }
 .review-metrics small { color: #77849a; }
@@ -2025,6 +2084,18 @@ body {
 .review-content-row { display: grid !important; gap: 6px; align-items: start !important; cursor: pointer; }
 .review-content-row:hover { background: #f7faff; }
 .review-content-row small { color: #7b879a; }
+.review-node-tree-panel { min-width: 0; }
+.review-node-tree-toolbar { position: sticky; top: 0; z-index: 2; display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 2px 0 12px; background: #fff; }
+.review-node-tree-toolbar .ant-input-search { max-width: 360px; }
+.review-node-tree-panel .ant-tree { background: transparent; }
+.review-node-tree-panel .ant-tree-treenode { width: 100%; padding: 3px 0; }
+.review-node-tree-panel .ant-tree-node-content-wrapper { min-width: 0; flex: 1; padding: 7px 9px !important; border-radius: 8px; }
+.review-node-tree-panel .ant-tree-title { display: block; }
+.review-node-tree-title { display: flex; gap: 12px; align-items: center; justify-content: space-between; min-width: 0; }
+.review-node-tree-main { display: grid; min-width: 0; gap: 5px; }
+.review-node-tree-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-node-tree-main small { color: #7b879a; }
+.review-node-tree-actions { flex: none; }
 .review-main .ant-tabs-content-holder { min-height: 300px; max-height: 440px; overflow: auto; }
 .review-pdf { width: 100%; height: 430px; border: 1px solid #e5eaf2; border-radius: 8px; }
 .review-selected-content { margin: 12px 0; background: #fbfcfe; }
@@ -2037,6 +2108,13 @@ body {
 .metadata-workbench .ant-list-item > div { width: 100%; min-width: 0; }
 .metadata-workbench .ant-list-item p { display: grid; margin: 5px 0; }
 .metadata-workbench .ant-list-item small { color: #7b879a; }
+.metadata-candidate-group { align-items: stretch !important; }
+.metadata-candidate-group > div { display: grid; gap: 8px; }
+.metadata-candidate-item { display: grid; min-width: 0; gap: 3px; padding-top: 8px; border-top: 1px solid #edf0f5; }
+.metadata-candidate-item:first-of-type { border-top: 0; }
+.metadata-candidate-item .ant-btn { justify-content: flex-start; width: 100%; height: auto; padding: 2px 0; text-align: left; white-space: normal; }
+.metadata-candidate-item .ant-btn > span { overflow-wrap: anywhere; line-height: 1.6; }
+.metadata-candidate-item small { display: block; }
 
 /* 流程设计器使用真实X6画布和只读历史修订。 */
 .process-designer-card .ant-card-body { padding: 0; }
@@ -2060,6 +2138,6 @@ body {
 @media (max-width: 1280px) {
   .task-stats { grid-template-columns: repeat(3, 1fr); }
   .review-workbench { grid-template-columns: 210px minmax(500px, 1fr); }
-  .review-quality { grid-column: 2; }
+  .review-quality.ant-card { grid-column: 2; height: auto; }
   .process-workbench { grid-template-columns: 130px minmax(520px, 1fr) 230px; }
 }

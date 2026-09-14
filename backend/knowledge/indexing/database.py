@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
+from knowledge.metadata_rules import status_transition_error
+
 from .config import canonical_json, sha256_text
 
 
@@ -208,7 +210,7 @@ class IndexDatabase:
                    pd.active_chunk_run_id, pd.approved_metadata_revision_id,
                    mr.title AS document_title, mr.document_code,
                    mr.status AS document_status, mr.confidentiality_level,
-                   mr.authority_level,
+                   mr.authority_level,mr.source_type AS metadata_source_type,
                    cr.parse_run_id, cr.status, cr.review_status, cr.source_scope
             FROM policy_document pd
             JOIN chunk_run cr ON cr.id=pd.active_chunk_run_id
@@ -235,6 +237,13 @@ class IndexDatabase:
                 raise ValueError(f"ChunkRun {row['active_chunk_run_id']} 不是正式成功运行")
             if row["review_status"] != "approved":
                 raise ValueError(f"ChunkRun {row['active_chunk_run_id']} 尚未通过审核")
+            transition_error = status_transition_error(
+                str(row["metadata_source_type"]), row["document_status"]
+            )
+            if transition_error:
+                raise ValueError(
+                    f"制度 {row['document_id']} 的元数据生命周期不一致：{transition_error}"
+                )
 
             chunks = self.connection.execute(
                 """
@@ -315,6 +324,7 @@ class IndexDatabase:
                        mr.title AS document_title,mr.document_code,
                        mr.status AS document_status,mr.confidentiality_level,
                        mr.authority_level,mr.lifecycle_status,
+                       mr.source_type AS metadata_source_type,
                        mr.parse_run_id AS metadata_parse_run_id,
                        cr.parse_run_id,cr.status,cr.review_status,cr.source_scope
                 FROM policy_document pd
@@ -351,6 +361,13 @@ class IndexDatabase:
                 raise ValueError(f"ChunkRun {expected['chunk_run_id']} 不是正式成功运行")
             if row["review_status"] != "approved":
                 raise ValueError(f"ChunkRun {expected['chunk_run_id']} 尚未通过审核")
+            transition_error = status_transition_error(
+                str(row["metadata_source_type"]), row["document_status"]
+            )
+            if transition_error:
+                raise ValueError(
+                    f"制度 {expected['document_id']} 的元数据生命周期不一致：{transition_error}"
+                )
 
             chunks = self.connection.execute(
                 """

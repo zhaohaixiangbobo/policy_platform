@@ -1,6 +1,15 @@
 /** 文件说明：定义M3/M4平台会话、公开回答快照与反馈类型。 */
 export type AnswerStatus = 'ANSWER' | 'INSUFFICIENT_EVIDENCE' | 'CONFLICT';
 export type QueryScope = 'CURRENT' | 'HISTORICAL';
+export type DocumentSelection =
+  | { mode: 'ALL' }
+  | { mode: 'SELECTED'; document_ids: number[] };
+
+export interface QueryScopeCapabilities {
+  active_index_run_id: number;
+  current_document_count: number;
+  historical_document_count: number;
+}
 
 export interface ChatSession {
   id: string;
@@ -43,6 +52,13 @@ export interface ChatMessage {
   session_id: string;
   role: 'user' | 'assistant';
   query_scope: QueryScope;
+  document_selection_mode: 'ALL' | 'SELECTED';
+  selected_document_ids: number[];
+  resolved_document_scope_mode: 'ALL' | 'SELECTED';
+  query_index_run_id: number | null;
+  access_scope_version: string;
+  access_scope_hash: string;
+  access_scope_count: number;
   content: string;
   answer_status: AnswerStatus | null;
   request_id: string;

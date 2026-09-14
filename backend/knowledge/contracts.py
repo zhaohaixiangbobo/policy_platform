@@ -1,14 +1,43 @@
-"""文件说明：定义独立 RAG HTTP 查询的稳定结果、引用和错误结构。
+"""文件说明：定义进程内 RAG 查询对 Platform 暴露的稳定结果、引用和错误结构。
 
-内部契约沿用rag_api_v1_1字段，保证聊天快照与历史数据语义稳定；不暴露Prompt正文、
+内部契约沿用rag_api_v1_1字段，保证应用层与知识Runtime之间及历史聊天快照的语义稳定；不暴露Prompt正文、
 reasoning、检索分数、完整Node映射或服务器绝对路径。
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+
+class AllDocumentScope(BaseModel):
+    """查询当前状态范围内的全部制度。"""
+
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["ALL"] = "ALL"
+
+
+class SelectedDocumentScope(BaseModel):
+    """查询Platform解析完成的精确制度集合。"""
+
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["SELECTED"]
+    document_ids: list[int] = Field(min_length=1, max_length=5000)
+
+    @field_validator("document_ids")
+    @classmethod
+    def normalize_document_ids(cls, value: list[int]) -> list[int]:
+        normalized = sorted(set(value))
+        if any(document_id <= 0 for document_id in normalized):
+            raise ValueError("document_ids必须是正整数")
+        return normalized
+
+
+DocumentScope = Annotated[
+    AllDocumentScope | SelectedDocumentScope,
+    Field(discriminator="mode"),
+]
+
 
 class QueryRequest(BaseModel):
     """制度问答请求。"""
@@ -17,6 +46,7 @@ class QueryRequest(BaseModel):
 
     query: StrictStr = Field(min_length=1, max_length=4000)
     query_scope: Literal["CURRENT", "HISTORICAL"] = "CURRENT"
+    document_scope: DocumentScope = Field(default_factory=AllDocumentScope)
 
     @field_validator("query")
     @classmethod

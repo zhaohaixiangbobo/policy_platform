@@ -6,6 +6,8 @@ import type {
   ChatTurnResponse,
   DiagnosticDetail,
   DiagnosticListResponse,
+  DocumentSelection,
+  QueryScopeCapabilities,
   QueryScope,
 } from '../types/chat';
 
@@ -35,10 +37,27 @@ export const listMessages = async (sessionId: string): Promise<ChatMessage[]> =>
   return result.items;
 };
 
-export const sendMessage = (sessionId: string, content: string, queryScope: QueryScope, signal?: AbortSignal) =>
+export const getQueryScopeCapabilities = () =>
+  requestJson<QueryScopeCapabilities>('/api/v1/chat/query-capabilities');
+
+export const sendMessage = (
+  sessionId: string,
+  content: string,
+  queryScope: QueryScope,
+  documentSelection: DocumentSelection,
+  signal?: AbortSignal,
+) =>
   requestJson<ChatTurnResponse>(
     `/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/messages`,
-    { method: 'POST', body: JSON.stringify({ content, query_scope: queryScope }), signal },
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        content,
+        query_scope: queryScope,
+        document_selection: documentSelection,
+      }),
+      signal,
+    },
   );
 
 export const submitFeedback = (

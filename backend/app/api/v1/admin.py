@@ -73,9 +73,29 @@ def process_summary(process, revision) -> ProcessSummary:
 
 
 @router.get("/jobs", response_model=JobListResponse)
-def list_jobs(state: str | None = None, session: Session = Depends(get_db_session), _principal: Principal = Depends(require_permission("admin.access"))) -> JobListResponse:
-    items, total, counts = ingestion(session).list_jobs(state)
-    return JobListResponse(items=items, total=total, counts=counts)
+def list_jobs(
+    state: str | None = None,
+    page: int = 1,
+    page_size: int = 10,
+    session: Session = Depends(get_db_session),
+    _principal: Principal = Depends(require_permission("admin.access")),
+) -> JobListResponse:
+    """返回服务端分页的入库任务，任务中心固定每页十条。"""
+
+    if page < 1 or page_size != 10:
+        raise HTTPException(status_code=422, detail="任务列表固定每页10条")
+    items, total, counts = ingestion(session).list_jobs(
+        state,
+        page=page,
+        page_size=page_size,
+    )
+    return JobListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=10,
+        counts=counts,
+    )
 
 
 @router.get("/jobs/{job_id}")

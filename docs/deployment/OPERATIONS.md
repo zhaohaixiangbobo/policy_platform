@@ -25,7 +25,7 @@ Set-Location 'D:\2-code\policy-platform\backend'
 & 'D:\2-code\policy-platform\scripts\dev-frontend.ps1'
 ```
 
-问答联调先在独立终端运行 `D:\2-code\rag\run_rag_api.py`，再启动 Platform。各进程按 `Ctrl+C` 停止。
+问答 Runtime 由 Platform 后端在首次查询时惰性初始化，不需要独立 8010 进程。各开发进程按 `Ctrl+C` 停止。
 
 ## 4. 备份与恢复
 
@@ -46,6 +46,6 @@ Set-Location 'D:\2-code\policy-platform\backend'
 
 - 制度列表为空：检查知识数据库是否存在 active Document 和 active ParseRun。
 - PDF 404：检查 active ParseRun 的相对路径及 `var/knowledge/pdf` 文件。
-- 问答失败：先检查 8010 的 `/health/ready`；RAG 内部依赖由 RAG 工程独立排查。
+- 问答失败：检查 `logs/api.log` 中的 `knowledge_query_failed` 事件，再核对 Qdrant、Embedding、Reranker 和 Generator 配置及可用性。
 - Platform 数据库异常：执行 `alembic current` 并检查 `var/platform.db` 权限。
 - 新文档失败：保留失败运行记录，修复输入或服务后创建新运行，不修改旧 active 指针。

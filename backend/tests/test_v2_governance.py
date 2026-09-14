@@ -2,6 +2,7 @@
 
 import os
 import sqlite3
+from datetime import date
 from pathlib import Path
 from uuid import uuid4
 
@@ -39,6 +40,36 @@ def _insert_reviewable_document(paths: KnowledgePaths, title: str, checksum: str
             active_parse_run_id=parse_run_id,
         )
         return document_id
+
+
+def _publish_initial_metadata(paths: KnowledgePaths, document_id: int) -> int:
+    """建立可供废止/失效测试使用的现行有效正式元数据。"""
+
+    with KnowledgeMetadataService(paths.database_path) as service:
+        draft = service.ensure_draft(
+            document_id,
+            "uploader",
+            source_type="PARSE_EXTRACTED",
+            initial_document_status="effective",
+        )
+        revision_id = int(draft["id"])
+        service.update_draft(document_id, revision_id, {
+            "issuing_org": "测试发布机构",
+            "owner_department": "测试责任部门",
+            "publish_date": "2026-09-14",
+        })
+        service.submit(document_id, revision_id)
+        service.review(document_id, revision_id, True, "reviewer", "初始元数据通过")
+    with sqlite3.connect(paths.database_path) as connection:
+        connection.execute(
+            "UPDATE document_metadata_revision SET lifecycle_status='PUBLISHED' WHERE id=?",
+            (revision_id,),
+        )
+        connection.execute(
+            "UPDATE policy_document SET active_metadata_revision_id=? WHERE id=?",
+            (revision_id, document_id),
+        )
+    return revision_id
 
 
 def test_metadata_revision_requires_explicit_status_confirmation() -> None:
@@ -89,6 +120,86 @@ def test_initial_metadata_draft_uses_upload_declaration() -> None:
         assert draft["lifecycle_status"] == "DRAFT"
 
 
+def test_repeal_and_expiry_use_separate_forced_status_flows() -> None:
+    """生命周期草稿不继承effective，且服务端拒绝把动作保存成错误状态。"""
+
+    runtime_root = Path(os.environ["POLICY_TEST_RUNTIME_ROOT"]).resolve()
+    paths = KnowledgePaths(runtime_root / uuid4().hex / "knowledge")
+    KnowledgeManagementService(paths).initialize_empty_baseline()
+
+    repeal_document_id = _insert_reviewable_document(paths, "待废止制度", "repeal-flow")
+    _publish_initial_metadata(paths, repeal_document_id)
+    with KnowledgeMetadataService(paths.database_path) as service:
+        repeal = service.ensure_draft(
+            repeal_document_id, "admin", source_type="REPEAL", change_reason="登记制度废止"
+        )
+        assert repeal["status"] == "repealed"
+        assert repeal["repeal_date"] == date.today().isoformat()
+        with pytest.raises(MetadataConflictError, match="必须为已废止"):
+            service.update_draft(
+                repeal_document_id, int(repeal["id"]), {"status": "effective"}
+            )
+        service.update_draft(
+            repeal_document_id, int(repeal["id"]), {"repeal_date": None}
+        )
+        with pytest.raises(MetadataConflictError, match="废止日期"):
+            service.submit(repeal_document_id, int(repeal["id"]))
+        service.update_draft(repeal_document_id, int(repeal["id"]), {
+            "repeal_date": "2026/09/14",
+            "repeal_reason": "测试废止流程",
+            "repeal_evidence": "测试审批依据",
+        })
+        with pytest.raises(MetadataConflictError, match="YYYY-MM-DD"):
+            service.submit(repeal_document_id, int(repeal["id"]))
+        service.update_draft(repeal_document_id, int(repeal["id"]), {
+            "repeal_date": "2026-09-14",
+            "repeal_reason": "测试废止流程",
+            "repeal_evidence": "测试审批依据",
+        })
+        pending = service.submit(repeal_document_id, int(repeal["id"]))
+        assert pending["lifecycle_status"] == "PENDING_REVIEW"
+        approved = service.review(
+            repeal_document_id, int(repeal["id"]), True, "reviewer", "废止信息通过"
+        )
+        assert approved["status"] == "repealed"
+
+    expiry_document_id = _insert_reviewable_document(paths, "待失效制度", "expiry-flow")
+    _publish_initial_metadata(paths, expiry_document_id)
+    with KnowledgeMetadataService(paths.database_path) as service:
+        expiry = service.ensure_draft(expiry_document_id, "admin", source_type="EXPIRY")
+        assert expiry["status"] == "expired"
+        with pytest.raises(MetadataConflictError, match="失效日期"):
+            service.submit(expiry_document_id, int(expiry["id"]))
+        service.update_draft(expiry_document_id, int(expiry["id"]), {
+            "expiry_date": "2026.12.31",
+            "change_reason": "有效期届满",
+        })
+        with pytest.raises(MetadataConflictError, match="YYYY-MM-DD"):
+            service.submit(expiry_document_id, int(expiry["id"]))
+        service.update_draft(expiry_document_id, int(expiry["id"]), {
+            "expiry_date": "2026-12-31",
+            "change_reason": "有效期届满",
+        })
+        assert service.submit(expiry_document_id, int(expiry["id"]))["status"] == "expired"
+
+
+def test_manual_correction_cannot_replace_lifecycle_actions() -> None:
+    """普通元数据修订不能绕过废止或失效的专用审核流程。"""
+
+    runtime_root = Path(os.environ["POLICY_TEST_RUNTIME_ROOT"]).resolve()
+    paths = KnowledgePaths(runtime_root / uuid4().hex / "knowledge")
+    KnowledgeManagementService(paths).initialize_empty_baseline()
+    document_id = _insert_reviewable_document(paths, "现行制度", "correction-status")
+    _publish_initial_metadata(paths, document_id)
+
+    with KnowledgeMetadataService(paths.database_path) as service:
+        correction = service.ensure_draft(
+            document_id, "admin", source_type="MANUAL_CORRECTION"
+        )
+        with pytest.raises(MetadataConflictError, match="登记废止或登记失效"):
+            service.update_draft(document_id, int(correction["id"]), {"status": "expired"})
+
+
 def test_not_required_chunk_run_cannot_enter_formal_publication() -> None:
     """零问题ChunkRun没有人工批准记录时，active指针也不能绕过发布门禁。"""
 
@@ -134,6 +245,41 @@ def test_not_required_chunk_run_cannot_enter_formal_publication() -> None:
     with IndexDatabase(paths.database_path) as database:
         with pytest.raises(ValueError, match="尚未通过审核"):
             database.freeze_active_sources([document_id])
+
+
+def test_inconsistent_repeal_revision_cannot_enter_publication() -> None:
+    """历史遗留的REPEAL+effective组合必须在索引构建前被明确拦截。"""
+
+    runtime_root = Path(os.environ["POLICY_TEST_RUNTIME_ROOT"]).resolve()
+    paths = KnowledgePaths(runtime_root / uuid4().hex / "knowledge")
+    KnowledgeManagementService(paths).initialize_empty_baseline()
+    document_id = _insert_reviewable_document(paths, "错误废止制度", "invalid-repeal")
+    revision_id = _publish_initial_metadata(paths, document_id)
+    now = "2026-09-14T00:00:00+00:00"
+    with sqlite3.connect(paths.database_path) as connection:
+        parse_run_id = int(connection.execute(
+            "SELECT active_parse_run_id FROM policy_document WHERE id=?", (document_id,)
+        ).fetchone()[0])
+        cursor = connection.execute(
+            """
+            INSERT INTO chunk_run (
+                document_id,parse_run_id,chunker_version,strategy,config_json,config_hash,
+                status,review_status,source_scope,started_at,created_at
+            ) VALUES (?,?,'test','test','{}','invalid-repeal','succeeded','approved','active',?,?)
+            """,
+            (document_id, parse_run_id, now, now),
+        )
+        connection.execute(
+            "UPDATE policy_document SET active_chunk_run_id=? WHERE id=?",
+            (int(cursor.lastrowid), document_id),
+        )
+        connection.execute(
+            "UPDATE document_metadata_revision SET source_type='REPEAL',status='effective' WHERE id=?",
+            (revision_id,),
+        )
+
+    with pytest.raises(ValueError, match="必须为已废止"):
+        KnowledgeManagementService(paths).publication_source(document_id, revision_id)
 
 
 def test_policy_document_is_a_version_under_policy_series() -> None:

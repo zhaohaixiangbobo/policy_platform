@@ -139,3 +139,42 @@ def test_catalog_only_exposes_documents_in_active_index_run() -> None:
     assert nodes[0].title == "第四条 行业省级一类竞赛获奖奖励标准："
     with pytest.raises(CatalogDocumentNotFoundError):
         catalog.get_document(2)
+
+    # 把制度2纳入同一active快照并标为历史版本，验证目录选择器复用同一范围边界。
+    connection = sqlite3.connect(paths.database_path)
+    connection.execute(
+        "UPDATE document_metadata_revision SET status='repealed' WHERE id=2"
+    )
+    connection.execute(
+        """
+        INSERT INTO index_run_source (
+            index_run_id,document_id,parse_run_id,chunk_run_id,metadata_revision_id,
+            retrievable_count,source_digest,created_at
+        ) VALUES (1,2,2,2,2,1,'digest-2',?)
+        """,
+        (now,),
+    )
+    connection.commit()
+    connection.close()
+
+    current_documents, current_total = catalog.list_documents(
+        keyword=None, status=None, issuer=None, department=None,
+        publish_date_from=None, publish_date_to=None, sort_by="updated_at",
+        sort_order="desc", page=1, page_size=20, query_scope="CURRENT",
+    )
+    historical_documents, historical_total = catalog.list_documents(
+        keyword=None, status=None, issuer=None, department=None,
+        publish_date_from=None, publish_date_to=None, sort_by="updated_at",
+        sort_order="desc", page=1, page_size=20, query_scope="HISTORICAL",
+        allowed_document_ids=[2],
+    )
+    hidden_documents, hidden_total = catalog.list_documents(
+        keyword=None, status=None, issuer=None, department=None,
+        publish_date_from=None, publish_date_to=None, sort_by="updated_at",
+        sort_order="desc", page=1, page_size=20, query_scope="HISTORICAL",
+        allowed_document_ids=[1],
+    )
+
+    assert current_total == 1 and [item.id for item in current_documents] == [1]
+    assert historical_total == 1 and [item.id for item in historical_documents] == [2]
+    assert hidden_total == 0 and hidden_documents == []

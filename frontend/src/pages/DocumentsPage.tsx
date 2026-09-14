@@ -57,6 +57,7 @@ const SORT_OPTIONS = [
 
 type SortBy = NonNullable<DocumentFilters['sort_by']>;
 type SortOrder = NonNullable<DocumentFilters['sort_order']>;
+type DocumentPageFilters = Required<Omit<DocumentFilters, 'query_scope'>>;
 
 const SORTABLE_FIELDS: readonly SortBy[] = [
   'updated_at',
@@ -84,7 +85,7 @@ function positiveInteger(value: string | null, fallback: number): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function filtersFromParams(params: URLSearchParams): Required<DocumentFilters> {
+function filtersFromParams(params: URLSearchParams): DocumentPageFilters {
   const sortByParam = params.get('sort_by');
   const sortOrderParam = params.get('sort_order');
   const requestedSortBy = SORTABLE_FIELDS.includes(sortByParam as SortBy) ? sortByParam as SortBy : DEFAULT_SORT.sort_by!;
@@ -104,7 +105,7 @@ function filtersFromParams(params: URLSearchParams): Required<DocumentFilters> {
   };
 }
 
-function paramsFromFilters(filters: Required<DocumentFilters>): URLSearchParams {
+function paramsFromFilters(filters: DocumentPageFilters): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.keyword) params.set('q', filters.keyword);
   if (filters.status) params.set('status', filters.status);
@@ -190,8 +191,8 @@ export function DocumentsPage() {
     };
   }, []);
 
-  const writeFilters = (next: Required<DocumentFilters>) => setSearchParams(paramsFromFilters(next));
-  const updateFilters = (patch: Partial<Required<DocumentFilters>>, resetPage = true) => {
+  const writeFilters = (next: DocumentPageFilters) => setSearchParams(paramsFromFilters(next));
+  const updateFilters = (patch: Partial<DocumentPageFilters>, resetPage = true) => {
     writeFilters({ ...filters, ...patch, page: resetPage ? 1 : (patch.page ?? filters.page) });
   };
   const currentSort = SORT_OPTIONS.find(

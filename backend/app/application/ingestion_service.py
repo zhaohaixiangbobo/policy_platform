@@ -158,13 +158,27 @@ class IngestionService:
         self.session.refresh(job)
         return job
 
-    def list_jobs(self, state: str | None = None) -> tuple[list[IngestionJob], int, dict[str, int]]:
+    def list_jobs(
+        self,
+        state: str | None = None,
+        *,
+        page: int = 1,
+        page_size: int = 10,
+    ) -> tuple[list[IngestionJob], int, dict[str, int]]:
+        """按当前筛选返回一页任务，同时保留全局状态统计。"""
+
         query = select(IngestionJob)
+        total_query = select(func.count()).select_from(IngestionJob)
         if state:
             query = query.where(IngestionJob.state == state)
-        items = self.session.scalars(query.order_by(IngestionJob.created_at.desc())).all()
+            total_query = total_query.where(IngestionJob.state == state)
+        items = self.session.scalars(
+            query.order_by(IngestionJob.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
         counts = {row[0]: row[1] for row in self.session.execute(select(IngestionJob.state, func.count()).group_by(IngestionJob.state)).all()}
-        total = self.session.scalar(select(func.count()).select_from(IngestionJob)) or 0
+        total = self.session.scalar(total_query) or 0
         return list(items), int(total), {str(key): int(value) for key, value in counts.items()}
 
     def retry(self, job_id: str, expected_version: int, actor_user_id: str, reason: str) -> IngestionJob:

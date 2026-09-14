@@ -1,6 +1,6 @@
 # 制度知识智能服务平台
 
-本仓库负责制度平台前端、Platform API、平台业务数据和管理流水线。制度问答通过 `rag_api_v1_1` HTTP 契约调用独立的 `D:\2-code\rag`，Platform 不访问 RAG 内部 SQLite、Qdrant 或模型服务。
+本仓库负责制度平台前端、Platform API、平台业务数据和完整知识流水线。制度问答由 `backend/knowledge` 中的进程内 RAG Runtime 执行，对 Platform 保持 `rag_api_v1_1` 结果语义，不再启动或调用 `D:\2-code\rag` 的 8010 服务。
 
 ## 工程结构
 
@@ -16,7 +16,7 @@ var/platform.db             平台业务数据库
 var/knowledge/              知识数据库及当前有效 DOCX/PDF
 ```
 
-数据所有权保持分开：会话、回答、Citation 快照、反馈、用户和配置写入 `platform.db`；管理流水线的文档及运行版本写入 Platform 自有知识库。问答事实源由独立 RAG 服务管理。
+数据所有权保持分开：会话、回答、Citation 快照、反馈、用户和配置写入 `platform.db`；文档、ParseRun、ChunkRun、IndexRun 及元数据版本写入 `var/knowledge/policy_parser.db`。进程内 RAG 只读 active IndexRun 和 Qdrant active alias。
 
 ## 固定工具链
 
@@ -67,14 +67,7 @@ Worker 默认把任务领取、阶段完成/失败、知识处理进度、IndexR
 - OpenAPI：`http://127.0.0.1:8020/api/docs`
 - 就绪检查：`http://127.0.0.1:8020/api/v1/health/ready`
 
-问答前需在 `D:\2-code\rag` 启动 8010：
-
-```powershell
-Set-Location 'D:\2-code\rag'
-& 'D:\3-anaconda\envs\py312\python.exe' run_rag_api.py
-```
-
-Platform 仅调用 `POST /v1/rag/query`。普通问答默认发送 `query_scope=CURRENT`，历史查询显式发送 `HISTORICAL`。
+问答不需要 8010。Platform 后端在首次问答时惰性初始化进程内 RAG Runtime，直接使用 `.env` 中的 Qdrant、Embedding、Reranker 和 Generator 配置。普通问答默认 `query_scope=CURRENT`，历史查询显式使用 `HISTORICAL`。
 
 回答质量门禁默认关闭。如需启用确定性回答覆盖与额外语义支撑校验，在 `.env` 中设置：
 
@@ -114,7 +107,7 @@ Set-Location 'D:\2-code\policy-platform\backend'
 
 - [当前项目交接说明](docs/PROJECT_HANDOFF.md)
 - [统一知识模块架构决策](docs/decisions/ADR-0002-UNIFIED-KNOWLEDGE-MODULE.md)
-- [RAG HTTP 问答边界](docs/decisions/ADR-0003-RAG-HTTP-QUERY-BOUNDARY.md)
+- [进程内RAG问答边界](docs/decisions/ADR-0004-IN-PROCESS-RAG-QUERY.md)
 - [文档处理模块规划](docs/DOCUMENT_PROCESSING_MODULE_PLAN.md)
 - [本机运行说明](docs/deployment/LOCAL_DEVELOPMENT.md)
 - [Platform API](docs/api/PLATFORM_API_V1.md)

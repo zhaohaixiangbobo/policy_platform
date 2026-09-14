@@ -2,8 +2,8 @@
 
 > 文件说明：本文件审查知识模块迁移方案与当前 `policy-platform` 工程结构、既有设计规划的
 > 一致性，并给出后续开发DOCX上传、解析、审核、分块和索引发布功能的最小实现思路。
-> 知识模块迁移和第二期基础链路已经实现。问答运行边界以 ADR-0003 为准：Platform 通过
-> `POST /v1/rag/query` 调用独立 8010；本文中原“进程内问答”方案已经废止。
+> 知识模块迁移和第二期基础链路已经实现。当前问答运行边界以 ADR-0004 为准：Platform
+> 通过进程内 `KnowledgeService` 调用 `RagRuntime`，不再依赖独立 8010 服务。
 
 ## 1. 审查结论
 
@@ -14,20 +14,20 @@
 | 当前结构或规划 | 迁移后的处理 | 结论 |
 |---|---|---|
 | `backend/app` 已按API、application、domain、infrastructure、schemas分层 | 保持不动 | 兼容 |
-| `backend/app/api/dependencies.py` 集中装配服务 | 注入 `RagApiClient` 与Platform应用服务 | 兼容 |
+| `backend/app/api/dependencies.py` 集中装配服务 | 注入进程内 `KnowledgeService` 与Platform应用服务 | 兼容 |
 | Platform使用FastAPI和SQLAlchemy | 继续负责页面API和Platform业务数据 | 兼容 |
 | 知识库使用原生SQLite、Qdrant和模型客户端 | 放入平级 `backend/knowledge` | 兼容 |
 | V2规划第二期增加上传、后台任务和人工审核 | 在统一知识服务上增加job和Worker | 兼容 |
 | 已有latest/active运行指针 | 原样保留 | 必须保留 |
 | 已有Qdrant版本化collection和alias | 原样保留 | 必须保留 |
 | 现有制度列表依赖Platform投影 | 改由 `KnowledgeCatalogService` 读取active数据 | 已完成 |
-| 现有问答依赖8010 HTTP客户端 | 保持版本化HTTP边界，不访问RAG内部存储或模型 | 已完成 |
+| 现有问答曾依赖8010 HTTP客户端 | 改为进程内服务边界，保留 `rag_api_v1_1` 结果语义 | 已完成 |
 | 当前PDF来自 `backend/document_files` | 改读 `var/knowledge/pdf` | 已完成 |
 | 当前三段Platform迁移 | 压缩为一个最终基线 | 适合本机测试项目 |
 
-需要明确的是：管理侧解析、审核、分块和索引编排保留在本工程；在线问答仍由独立RAG工程提供
-8010公开API。二者共享公开版本标识，不共享进程内Runtime，也不允许Platform绕过API访问RAG内部
-SQLite、Qdrant或模型服务。该边界不改变以下领域规则：
+需要明确的是：管理侧解析、审核、分块、索引编排和在线问答都保留在本工程。应用层只通过
+`KnowledgeService` 使用进程内Runtime，不直接操作知识SQLite、Qdrant客户端或模型客户端。
+该边界不改变以下领域规则：
 
 - 原始文件不可覆盖；
 - ParseRun、ChunkRun和IndexRun分别审核与激活；
@@ -50,11 +50,11 @@ backend/knowledge
   └─ 管理能力：解析、审核、分块、索引、active制度目录
 ```
 
-`app` 的问答服务只调用 `RagApiClient`；管理服务可以调用 `knowledge.management` 和
+`app` 的问答服务只调用 `knowledge.service.KnowledgeService`；管理服务可以调用 `knowledge.management` 和
 `knowledge.catalog`。API路由不直接导入知识数据库、Qdrant或模型客户端。具体约束为：
 
 ```text
-允许：app.application.chat_service -> app.infrastructure.rag_api_client
+允许：app.application.chat_service -> knowledge.service
 允许：app.application.document_service -> knowledge.catalog
 允许：worker -> knowledge.management
 
@@ -127,17 +127,17 @@ backend/
 
 ## 4. 运行时装配
 
-### 4.1 RagApiClient生命周期
+### 4.1 KnowledgeService生命周期
 
-Platform 不初始化 RagRuntime、Qdrant客户端或模型客户端。FastAPI lifespan 只创建可复用的
-`RagApiClient`，在停止时关闭HTTP连接：
+FastAPI lifespan 创建可复用的 `KnowledgeService`，但不立即初始化RagRuntime、Qdrant客户端或
+模型客户端。首次问答在专用单线程中惰性创建Runtime，停止时在同一线程释放资源：
 
 ```text
 FastAPI启动
   ↓
-创建RagApiClient
+创建KnowledgeService
   ↓
-配置8010地址和HTTP超时
+读取知识库、Qdrant和模型服务配置
   ↓
 保存到app.state
   ↓
@@ -146,7 +146,7 @@ FastAPI启动
 FastAPI停止时释放资源
 ```
 
-当前 `app/api/dependencies.py` 从 `app.state` 读取该客户端，不需要引入依赖注入框架。
+当前 `app/api/dependencies.py` 从 `app.state` 读取该服务，不需要引入依赖注入框架。
 
 ### 4.2 配置
 
@@ -154,12 +154,11 @@ Platform配置：
 
 ```text
 PLATFORM_DATABASE_URL
-POLICY_KNOWLEDGE_DATA_ROOT
-PLATFORM_RAG_API_URL
-PLATFORM_RAG_QUERY_TIMEOUT_SECONDS
+PLATFORM_KNOWLEDGE_DATA_ROOT
 ```
 
-所有文件路径以 `POLICY_KNOWLEDGE_DATA_ROOT` 为根解析，数据库中保存相对路径，避免依赖当前工作目录。
+Platform Web进程的所有文件路径以 `PLATFORM_KNOWLEDGE_DATA_ROOT` 为根解析；知识CLI可用
+`POLICY_KNOWLEDGE_DATA_ROOT` 覆盖同一目录。数据库中保存相对路径，避免依赖当前工作目录。
 
 ## 5. 数据与文件边界
 
@@ -400,8 +399,8 @@ MD、JSON只在用户主动导出时临时生成。
 - 保存Citation快照；
 - 保存反馈和诊断摘要。
 
-问答固定通过 `RagApiClient` 调用 8010 的 `POST /v1/rag/query`，并按 `rag_api_v1_1`
-处理三类响应和公开Citation字段。
+问答固定通过进程内 `KnowledgeService` 调用RagRuntime，并按 `rag_api_v1_1`
+处理三类响应和公开Citation字段；应用层不依赖Runtime的受控诊断字段。
 
 ### 12.3 PDF
 
@@ -429,7 +428,7 @@ MD、JSON只在用户主动导出时临时生成。
 | 风险 | 控制方式 |
 |---|---|
 | app直接修改知识表 | 只允许通过KnowledgeService执行写操作 |
-| Platform意外加载模型或访问RAG内部存储 | 问答只注入RagApiClient并遵守8010公开契约 |
+| API路由绕过知识服务直接访问内部存储或模型 | 问答只注入KnowledgeService并遵守版本化结果契约 |
 | 上传请求长时间阻塞 | 上传只保存文件并创建job，Worker执行处理 |
 | 新运行覆盖active | 审核与激活分开，latest/active保持独立 |
 | IndexRun成功后自动发布 | 默认 `activate=False`，发布单独确认 |
@@ -437,14 +436,14 @@ MD、JSON只在用户主动导出时临时生成。
 | 文件移动后数据库路径失效 | 数据库保存相对路径，统一data root |
 | Platform任务表复制知识数据 | Platform只保存任务、事件、Run ID和审核分配 |
 | SQLite多Worker写入冲突 | 本机阶段只启用一个Worker |
-| ADR-0002残留进程内问答描述 | ADR-0003明确取代该部分，运行文档统一指向8010 |
+| 历史文档仍描述独立8010 | ADR-0004明确取代ADR-0003，当前运行文档统一指向进程内服务 |
 
 ## 15. 最终判断
 
-采用 `backend/app` 与 `backend/knowledge` 平级管理结构，同时让在线问答保持独立8010边界：
+采用 `backend/app` 与 `backend/knowledge` 平级管理结构，同时让在线问答保持进程内服务边界：
 
 - 不重写成熟Parser、Chunk、Index和RAG算法；
-- 不复制制度投影，在线问答仍调用独立8010公开API；
+- 不复制制度投影，在线问答复用本工程的知识Runtime；
 - 不合并两套性质不同的SQLite；
 - 现有前端接口可以基本保持；
 - CLI、未来Worker和管理API复用同一服务；

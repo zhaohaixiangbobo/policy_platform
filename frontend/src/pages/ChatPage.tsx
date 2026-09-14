@@ -8,7 +8,9 @@ import {
   DeleteOutlined,
   DislikeFilled,
   DislikeOutlined,
+  DownOutlined,
   EditOutlined,
+  FileSearchOutlined,
   FileProtectOutlined,
   HomeOutlined,
   LikeFilled,
@@ -28,12 +30,14 @@ import {
   Checkbox,
   Collapse,
   Drawer,
+  Dropdown,
   Empty,
   Input,
   Modal,
-  Segmented,
   Skeleton,
   Space,
+  Table,
+  Tag,
   Tooltip,
   Typography,
   message,
@@ -46,16 +50,26 @@ import remarkGfm from 'remark-gfm';
 import {
   createSession,
   deleteSession,
+  getQueryScopeCapabilities,
   listMessages,
   listSessions,
   renameSession,
   sendMessage,
   submitFeedback,
 } from '../api/chat';
+import { getDocument, listDocuments } from '../api/documents';
 import { EvidencePanel } from '../components/EvidencePanel';
 import { UiIcon } from '../components/UiIcon';
 import { commonPolicyQuestions } from '../data/commonPolicyQuestions';
-import type { ChatMessage, ChatSession, CitationSnapshot, QueryScope } from '../types/chat';
+import type {
+  ChatMessage,
+  ChatSession,
+  CitationSnapshot,
+  DocumentSelection,
+  QueryScope,
+  QueryScopeCapabilities,
+} from '../types/chat';
+import type { DocumentSummary } from '../types/documents';
 import { parseChatLaunchState } from '../utils/chatNavigation';
 
 // 当前公开回答没有推荐问题字段，以下内容只用于展示，不会写入数据库。
@@ -286,6 +300,16 @@ function AnswerBody({
                 <div><dt>引擎请求标识</dt><dd>{item.engine_request_id ?? '—'}</dd></div>
                 <div><dt>响应契约</dt><dd>{item.contract_version ?? '—'}</dd></div>
                 <div><dt>查询范围</dt><dd>{item.query_scope === 'HISTORICAL' ? '历史制度' : '现行有效制度'}</dd></div>
+                <div>
+                  <dt>制度选择</dt>
+                  <dd>
+                    {item.document_selection_mode === 'ALL'
+                      ? '全部可访问制度'
+                      : `指定制度：${item.selected_document_ids.join('、')}`}
+                  </dd>
+                </div>
+                <div><dt>范围制度数</dt><dd>{item.access_scope_count}</dd></div>
+                <div><dt>查询索引</dt><dd>{item.query_index_run_id ?? '—'}</dd></div>
                 <div><dt>索引运行</dt><dd>{item.index_run_id ?? '—'}</dd></div>
                 <div>
                   <dt>质量门禁</dt>
@@ -322,7 +346,20 @@ export function ChatPage() {
   const [pendingContent, setPendingContent] = useState<string | null>(null);
   const [failedContent, setFailedContent] = useState<string | null>(null);
   const [failedScope, setFailedScope] = useState<QueryScope>('CURRENT');
+  const [failedSelection, setFailedSelection] = useState<DocumentSelection>({ mode: 'ALL' });
   const [queryScope, setQueryScope] = useState<QueryScope>('CURRENT');
+  const [documentSelectionMode, setDocumentSelectionMode] = useState<'ALL' | 'SELECTED'>('ALL');
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<number[]>([]);
+  const [selectedDocuments, setSelectedDocuments] = useState<DocumentSummary[]>([]);
+  const [scopeCapabilities, setScopeCapabilities] = useState<QueryScopeCapabilities | null>(null);
+  const [documentPickerOpen, setDocumentPickerOpen] = useState(false);
+  const [documentPickerKeyword, setDocumentPickerKeyword] = useState('');
+  const [documentPickerPage, setDocumentPickerPage] = useState(1);
+  const [documentPickerItems, setDocumentPickerItems] = useState<DocumentSummary[]>([]);
+  const [documentPickerTotal, setDocumentPickerTotal] = useState(0);
+  const [documentPickerLoading, setDocumentPickerLoading] = useState(false);
+  const [pickerSelectedIds, setPickerSelectedIds] = useState<number[]>([]);
+  const [pickerDocumentMap, setPickerDocumentMap] = useState<Record<number, DocumentSummary>>({});
   const [feedbackTarget, setFeedbackTarget] = useState<ChatMessage | null>(null);
   const [feedbackByMessage, setFeedbackByMessage] = useState<Record<string, 'up' | 'down'>>({});
   const [reasons, setReasons] = useState<string[]>([]);
@@ -337,12 +374,22 @@ export function ChatPage() {
   const messageRevisionRef = useRef(0);
   const launchRequestRef = useRef(parseChatLaunchState(location.state));
 
+  const documentSelection = useMemo<DocumentSelection>(
+    () => documentSelectionMode === 'SELECTED'
+      ? { mode: 'SELECTED', document_ids: selectedDocumentIds }
+      : { mode: 'ALL' },
+    [documentSelectionMode, selectedDocumentIds],
+  );
+
   const refreshSessions = async () => setSessions(await listSessions());
 
   useEffect(() => {
     void refreshSessions().catch((error: unknown) => (
       message.error(error instanceof Error ? error.message : '会话加载失败')
     ));
+    void getQueryScopeCapabilities()
+      .then(setScopeCapabilities)
+      .catch(() => setScopeCapabilities(null));
   }, []);
 
   useEffect(() => {
@@ -355,12 +402,63 @@ export function ChatPage() {
     setMessages([]);
     setLoading(true);
     listMessages(sessionId)
-      .then((items) => setMessages((current) => (
-        messageRevisionRef.current === loadRevision ? items : mergeMessages(items, current)
-      )))
+      .then(async (items) => {
+        setMessages((current) => (
+          messageRevisionRef.current === loadRevision ? items : mergeMessages(items, current)
+        ));
+        const latestQuestion = [...items].reverse().find((item) => item.role === 'user');
+        if (!latestQuestion || messageRevisionRef.current !== loadRevision) return;
+        setQueryScope(latestQuestion.query_scope);
+        if (latestQuestion.document_selection_mode === 'SELECTED') {
+          const restored = await Promise.all(latestQuestion.selected_document_ids.map(async (documentId) => {
+            try {
+              return await getDocument(String(documentId));
+            } catch {
+              return null;
+            }
+          }));
+          const available = restored.filter((item): item is DocumentSummary => item !== null);
+          setSelectedDocumentIds(latestQuestion.selected_document_ids);
+          setSelectedDocuments(available);
+          setDocumentSelectionMode('SELECTED');
+          if (available.length !== latestQuestion.selected_document_ids.length) {
+            message.warning('历史会话的部分制度当前不可用，请重新选择后再提问');
+          }
+        } else {
+          setDocumentSelectionMode('ALL');
+          setSelectedDocumentIds([]);
+          setSelectedDocuments([]);
+        }
+      })
       .catch((error: unknown) => message.error(error instanceof Error ? error.message : '消息加载失败'))
       .finally(() => setLoading(false));
   }, [sessionId]);
+
+  useEffect(() => {
+    if (!documentPickerOpen) return;
+    let cancelled = false;
+    setDocumentPickerLoading(true);
+    listDocuments({
+      keyword: documentPickerKeyword || undefined,
+      query_scope: queryScope,
+      page: documentPickerPage,
+      page_size: 10,
+      sort_by: 'updated_at',
+      sort_order: 'desc',
+    })
+      .then((result) => {
+        if (cancelled) return;
+        setDocumentPickerItems(result.items);
+        setDocumentPickerTotal(result.total);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) message.error(error instanceof Error ? error.message : '制度列表加载失败');
+      })
+      .finally(() => {
+        if (!cancelled) setDocumentPickerLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [documentPickerOpen, documentPickerKeyword, documentPickerPage, queryScope]);
 
   const allCitations = useMemo(
     () => messages.filter((item) => item.role === 'assistant').flatMap((item) => item.citations),
@@ -414,7 +512,12 @@ export function ChatPage() {
     ))?.citations ?? [];
   }, [messages, selectedCitation]);
 
-  const executeSend = async (targetSessionId: string, submitted: string, scope: QueryScope) => {
+  const executeSend = async (
+    targetSessionId: string,
+    submitted: string,
+    scope: QueryScope,
+    selection: DocumentSelection,
+  ) => {
     const content = submitted.trim();
     if (!content || sending) return;
     setSending(true);
@@ -424,7 +527,7 @@ export function ChatPage() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const turn = await sendMessage(targetSessionId, content, scope, controller.signal);
+      const turn = await sendMessage(targetSessionId, content, scope, selection, controller.signal);
       // 新会话路由加载与首问响应可能并发返回，按公开消息 ID 合并可避免重复消息。
       messageRevisionRef.current += 1;
       setMessages((current) => mergeMessages(current, [turn.user_message, turn.assistant_message]));
@@ -435,6 +538,7 @@ export function ChatPage() {
       setDraft(content);
       setFailedContent(content);
       setFailedScope(scope);
+      setFailedSelection(selection);
       message.error(
         error instanceof Error && error.name === 'AbortError'
           ? '已取消本地等待；请刷新会话确认后台请求状态。'
@@ -454,7 +558,11 @@ export function ChatPage() {
     }
   };
 
-  const handleNewSession = async (initialDraft?: string, submitImmediately = false) => {
+  const handleNewSession = async (
+    initialDraft?: string,
+    submitImmediately = false,
+    initialSelection: DocumentSelection = documentSelection,
+  ) => {
     if (sending) return;
     try {
       const created = await createSession();
@@ -464,9 +572,14 @@ export function ChatPage() {
       setSessionDrawerOpen(false);
       navigate(`/chat/${created.id}`, { state: null });
       if (initialDraft && submitImmediately) {
-        await executeSend(created.id, initialDraft, queryScope);
+        await executeSend(created.id, initialDraft, queryScope, initialSelection);
       } else if (initialDraft) {
         setDraft(initialDraft);
+      } else {
+        setQueryScope('CURRENT');
+        setDocumentSelectionMode('ALL');
+        setSelectedDocumentIds([]);
+        setSelectedDocuments([]);
       }
       window.setTimeout(() => senderRef.current?.focus(), 0);
     } catch (error) {
@@ -478,10 +591,55 @@ export function ChatPage() {
     const content = (submitted ?? draft).trim();
     if (!content) return;
     if (!sessionId) {
-      await handleNewSession(content, true);
+      await handleNewSession(content, true, documentSelection);
       return;
     }
-    await executeSend(sessionId, content, queryScope);
+    await executeSend(sessionId, content, queryScope, documentSelection);
+  };
+
+  const changeQueryScope = (nextScope: QueryScope) => {
+    if (nextScope === queryScope) return;
+    if (nextScope === 'HISTORICAL' && (!scopeCapabilities || scopeCapabilities.historical_document_count === 0)) {
+      message.info('当前正式索引中暂无历史制度');
+      return;
+    }
+    setQueryScope(nextScope);
+    if (documentSelectionMode === 'SELECTED') {
+      setDocumentSelectionMode('ALL');
+      setSelectedDocumentIds([]);
+      setSelectedDocuments([]);
+      message.info('检索范围已变化，请重新选择具体制度');
+    }
+  };
+
+  const openDocumentPicker = () => {
+    const availableIds = selectedDocuments.map((item) => item.id);
+    setPickerSelectedIds(availableIds);
+    setPickerDocumentMap(Object.fromEntries(selectedDocuments.map((item) => [item.id, item])));
+    if (availableIds.length !== selectedDocumentIds.length) {
+      message.info('已移除当前不可用的历史选择，请重新确认制度范围');
+    }
+    setDocumentPickerKeyword('');
+    setDocumentPickerPage(1);
+    setDocumentPickerOpen(true);
+  };
+
+  const confirmDocumentPicker = () => {
+    if (pickerSelectedIds.length === 0) {
+      message.warning('请至少选择一份制度');
+      return;
+    }
+    const values = pickerSelectedIds
+      .map((documentId) => pickerDocumentMap[documentId])
+      .filter((item): item is DocumentSummary => Boolean(item));
+    if (values.length !== pickerSelectedIds.length) {
+      message.error('部分制度信息已经失效，请重新选择');
+      return;
+    }
+    setSelectedDocumentIds(pickerSelectedIds);
+    setSelectedDocuments(values);
+    setDocumentSelectionMode('SELECTED');
+    setDocumentPickerOpen(false);
   };
 
   useEffect(() => {
@@ -776,37 +934,104 @@ export function ChatPage() {
           {failedContent ? (
             <div className="send-failure">
               <span>上次发送未完成，问题已保留。</span>
-              <Button type="link" size="small" onClick={() => void executeSend(sessionId ?? '', failedContent, failedScope)}>按原范围重试</Button>
+              <Button
+                type="link"
+                size="small"
+                onClick={() => void executeSend(
+                  sessionId ?? '',
+                  failedContent,
+                  failedScope,
+                  failedSelection,
+                )}
+              >
+                按原范围重试
+              </Button>
             </div>
           ) : null}
-          <Space size={12} wrap style={{ marginBottom: 8 }}>
-            <Typography.Text type="secondary">检索范围</Typography.Text>
-            <Segmented<QueryScope>
-              value={queryScope}
-              disabled={sending}
-              options={[
-                { label: '现行有效制度', value: 'CURRENT' },
-                { label: '历史制度', value: 'HISTORICAL' },
-              ]}
-              onChange={setQueryScope}
-            />
-            {queryScope === 'HISTORICAL' ? <Typography.Text type="warning">仅检索已废止或已失效制度</Typography.Text> : null}
-          </Space>
           <Sender
             ref={senderRef}
             rootClassName="chat-sender"
             value={draft}
             loading={sending}
-            disabled={loading}
+            disabled={loading || (queryScope === 'HISTORICAL' && (!scopeCapabilities || scopeCapabilities.historical_document_count === 0))}
             submitType="enter"
             placeholder="询问制度相关问题……"
             autoSize={{ minRows: 1, maxRows: 6 }}
+            actions={false}
+            footer={({ components }) => {
+              const ActionButton = sending ? components.LoadingButton : components.SendButton;
+              return (
+                <div className="composer-toolbar">
+                  <div className="composer-tools">
+                    <Dropdown
+                      disabled={sending}
+                      trigger={['click']}
+                      menu={{
+                        selectedKeys: [documentSelectionMode],
+                        items: [
+                          { key: 'ALL', label: '全部可访问制度' },
+                          { key: 'SELECTED', label: '选择具体制度' },
+                        ],
+                        onClick: ({ key }) => {
+                          if (key === 'ALL') {
+                            setDocumentSelectionMode('ALL');
+                            setSelectedDocumentIds([]);
+                            setSelectedDocuments([]);
+                          } else {
+                            openDocumentPicker();
+                          }
+                        },
+                      }}
+                    >
+                      <Button className="composer-tool-button" icon={<UiIcon icon={FileSearchOutlined} />}>
+                        {documentSelectionMode === 'SELECTED'
+                          ? `已选 ${selectedDocumentIds.length} 份制度`
+                          : '全部可访问制度'}
+                        <UiIcon icon={DownOutlined} />
+                      </Button>
+                    </Dropdown>
+                    <Dropdown
+                      disabled={sending}
+                      trigger={['click']}
+                      menu={{
+                        selectedKeys: [queryScope],
+                        items: [
+                          {
+                            key: 'CURRENT',
+                            label: `现行有效制度（${scopeCapabilities?.current_document_count ?? '—'}）`,
+                          },
+                          {
+                            key: 'HISTORICAL',
+                            label: scopeCapabilities?.historical_document_count === 0
+                              ? '历史制度（暂无可查询制度）'
+                              : `历史制度（${scopeCapabilities?.historical_document_count ?? '—'}）`,
+                            disabled: !scopeCapabilities || scopeCapabilities.historical_document_count === 0,
+                          },
+                        ],
+                        onClick: ({ key }) => changeQueryScope(key as QueryScope),
+                      }}
+                    >
+                      <Button className="composer-tool-button">
+                        {queryScope === 'CURRENT' ? '现行有效制度' : '历史制度'}
+                        <UiIcon icon={DownOutlined} />
+                      </Button>
+                    </Dropdown>
+                  </div>
+                  <div className="composer-submit-area">
+                    <span className="composer-keyboard-hint">按 Enter 发送，Shift + Enter 换行</span>
+                    <ActionButton className="composer-submit-button" shape="circle" type="primary" />
+                  </div>
+                </div>
+              );
+            }}
             onChange={setDraft}
             onSubmit={(value) => void handleSend(value)}
             onCancel={() => abortRef.current?.abort()}
           />
           <Typography.Text type="secondary" className="composer-hint">
-            {queryScope === 'CURRENT' ? '默认仅检索现行有效制度' : '当前仅检索历史制度'}，请以制度原文为准。
+            {queryScope === 'HISTORICAL' && scopeCapabilities?.historical_document_count === 0
+              ? '当前正式索引中暂无历史制度，请切换到现行有效制度。'
+              : '答案仅基于当前选择范围内的正式制度，请以引用原文为准。'}
           </Typography.Text>
         </div>
       </main>
@@ -833,6 +1058,88 @@ export function ChatPage() {
       >
         {evidenceContent}
       </Drawer>
+
+      <Modal
+        title={`选择具体制度 · ${queryScope === 'CURRENT' ? '现行有效' : '历史制度'}`}
+        width={820}
+        open={documentPickerOpen}
+        okText={`确认选择（${pickerSelectedIds.length}）`}
+        okButtonProps={{ disabled: pickerSelectedIds.length === 0 }}
+        onOk={confirmDocumentPicker}
+        onCancel={() => setDocumentPickerOpen(false)}
+      >
+        <Input.Search
+          allowClear
+          className="document-picker-search"
+          placeholder="搜索制度名称、文号、发布机构或正文关键词"
+          value={documentPickerKeyword}
+          onChange={(event) => {
+            setDocumentPickerKeyword(event.target.value);
+            setDocumentPickerPage(1);
+          }}
+        />
+        <Table<DocumentSummary>
+          rowKey="id"
+          size="small"
+          loading={documentPickerLoading}
+          dataSource={documentPickerItems}
+          columns={[
+            {
+              title: '制度名称',
+              dataIndex: 'title',
+              ellipsis: true,
+              render: (value: string, item) => (
+                <Space direction="vertical" size={0}>
+                  <Typography.Text strong>{value}</Typography.Text>
+                  <Typography.Text type="secondary">{item.document_code ?? '暂无文号'}</Typography.Text>
+                </Space>
+              ),
+            },
+            {
+              title: '发布日期',
+              dataIndex: 'publish_date',
+              width: 130,
+              render: (value: string | null) => value ?? '—',
+            },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              width: 110,
+              render: (value: string) => <Tag color={value === '现行有效' ? 'green' : 'orange'}>{value}</Tag>,
+            },
+          ]}
+          rowSelection={{
+            selectedRowKeys: pickerSelectedIds,
+            preserveSelectedRowKeys: true,
+            getCheckboxProps: (record) => ({
+              disabled: pickerSelectedIds.length >= 20 && !pickerSelectedIds.includes(record.id),
+            }),
+            onChange: (keys, rows) => {
+              const nextIds = keys.map(Number);
+              if (nextIds.length > 20) {
+                message.warning('一次最多选择20份制度');
+                return;
+              }
+              setPickerSelectedIds(nextIds);
+              setPickerDocumentMap((current) => {
+                const merged = { ...current };
+                rows.forEach((item) => { merged[item.id] = item; });
+                Object.keys(merged).forEach((key) => {
+                  if (!nextIds.includes(Number(key))) delete merged[Number(key)];
+                });
+                return merged;
+              });
+            },
+          }}
+          pagination={{
+            current: documentPickerPage,
+            pageSize: 10,
+            total: documentPickerTotal,
+            showSizeChanger: false,
+            onChange: setDocumentPickerPage,
+          }}
+        />
+      </Modal>
 
       <Modal
         title="重命名会话"

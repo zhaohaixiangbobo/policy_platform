@@ -1,6 +1,6 @@
 # 制度知识智能服务平台项目交接文档
 
-> 文件说明：记录 2026-09-03 问答重新切回独立 RAG HTTP 契约后的当前工程边界。
+> 文件说明：记录 2026-09-14 进程内RAG、制度选择范围和权限预留后的当前工程边界。
 
 ## 1. 当前状态
 
@@ -8,17 +8,17 @@
 
 - `frontend` 提供制度库、问答、反馈和诊断页面；
 - `backend/app` 提供 Platform API 和平台业务服务；
-- `backend/knowledge` 提供 Platform 管理流水线能力；
+- `backend/knowledge` 提供 Platform 管理流水线和进程内问答能力；
 - `var/platform.db` 保存平台业务数据；
 - `var/knowledge/policy_parser.db` 保存知识流水线和运行版本；
-- `D:\2-code\rag` 是独立问答引擎，通过 8010 提供公开 API。
+- `D:\2-code\rag` 不参与当前 Platform 运行，仅作为历史源工程保留。
 
-问答边界事实源是 [ADR-0003](decisions/ADR-0003-RAG-HTTP-QUERY-BOUNDARY.md)；ADR-0002 的管理流水线决策继续有效，其中“问答进程内调用”已被取代。
+当前问答边界事实源是 [ADR-0004](decisions/ADR-0004-IN-PROCESS-RAG-QUERY.md)；ADR-0003 已废止，ADR-0002 的统一知识模块决策恢复为完整现行方案。
 
 ## 2. 强制边界
 
 1. 浏览器只访问 Platform API，不直接访问数据库、Qdrant 或模型服务。
-2. Platform 问答只能通过 `RagApiClient` 调用 `POST /v1/rag/query`，不得访问 RAG 内部 SQLite、Qdrant 或模型服务。
+2. Platform 问答只能通过 `KnowledgeService` 调用进程内 `RagRuntime`，应用层不得越过该服务直接调用 SQLite、Qdrant 或模型客户端。
 3. Platform 数据与知识数据继续使用两个 SQLite，不合并表和迁移历史。
 4. 问答保持 `rag_api_v1_1` 的公开语义，正确处理 `ANSWER`、`INSUFFICIENT_EVIDENCE` 和 `CONFLICT`。
 5. Citation 保留 `document_id`、`primary_node_id`、各类 run ID、证据快照及公开版本字段。
@@ -26,6 +26,16 @@
 7. 响应 SLA、提示阈值和并发容量仍未冻结。
 8. 原始文档不可覆盖；latest 与 active 分离；只有审核通过后才能切换 active。
 9. Qdrant active alias 仅在 IndexRun 验证通过后切换。
+10. 问答状态范围明确为 `CURRENT|HISTORICAL`，制度选择明确为 `ALL|SELECTED`；不使用
+    `null` 或空数组推断用户意图。
+11. `QueryScopeResolver` 统一计算“用户可访问 ∩ 用户选择 ∩ 状态范围 ∩ active IndexRun”，
+    指定制度不可查询时绝不自动扩大到全库。
+12. 当前 `DocumentAccessResolver` 允许有读取权限的用户访问全部正式制度；未来接入 4A 时只替换
+    身份确认与本地制度授权解析，`RagRuntime` 只接收 Platform 计算后的制度范围。
+13. Platform 在接收 RAG 响应后再次校验 Citation 的制度状态和 `document_id`，并在
+    `platform.db` 中保存本轮用户选择及最终授权范围快照。
+14. 制度废止和失效采用独立元数据修订流程：`REPEAL` 固定为 `repealed`，`EXPIRY` 固定为
+    `expired`；普通修订不能改变效力状态，索引冻结拒绝流程类型与状态不一致的历史错误修订。
 
 ## 3. 数据与文件
 
@@ -44,16 +54,17 @@ var/
 
 ## 4. 启动与验证
 
-问答联调需分别启动 RAG 8010 与 Platform 8020：
+问答联调只需启动 Platform 8020 与前端：
 
 ```powershell
-Set-Location 'D:\2-code\rag'
-& 'D:\3-anaconda\envs\py312\python.exe' run_rag_api.py
 & 'D:\2-code\policy-platform\scripts\dev-backend.ps1'
 & 'D:\2-code\policy-platform\scripts\dev-frontend.ps1'
 ```
 
 最小测试和数据校验见 [迁移验证记录](testing/KNOWLEDGE_MIGRATION_VERIFICATION_2026-08-29.md)。真实问答仍要求本机 Qdrant 与三个模型服务可用。
+
+当前 active IndexRun 中暂无已废止或已失效制度，前端会禁用历史制度查询。首份历史制度进入
+正式索引后的端到端验收步骤见 [代办事项](代办.md#3-首份历史制度检索验收)。
 
 ## 5. 后续开发顺序
 

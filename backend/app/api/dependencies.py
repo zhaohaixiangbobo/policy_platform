@@ -1,16 +1,17 @@
-"""文件说明：集中组装 Platform 数据库、目录读取和 RAG HTTP 客户端依赖。"""
+"""文件说明：集中组装 Platform 数据库、目录读取和进程内知识服务依赖。"""
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from knowledge.catalog import KnowledgeCatalogService
-from app.infrastructure.rag_api_client import RagApiClient
+from knowledge.service import KnowledgeService
 
 from app.application.chat_service import ChatService
 from app.application.diagnostic_service import DiagnosticService
 from app.application.document_service import DocumentService
 from app.application.health_service import HealthService
 from app.application.auth_service import AuthService, AuthenticationError, AuthorizationError, Principal, hash_token
+from app.application.query_scope_service import QueryScopeResolver
 from app.config import get_settings
 from app.infrastructure.db.session import check_database, get_db_session
 
@@ -60,10 +61,10 @@ def get_health_service() -> HealthService:
     )
 
 
-def get_rag_api_client(request: Request) -> RagApiClient:
-    """返回应用生命周期内复用的 RAG HTTP 客户端。"""
+def get_knowledge_service(request: Request) -> KnowledgeService:
+    """返回应用生命周期内复用的进程内知识查询服务。"""
 
-    return request.app.state.rag_api_client
+    return request.app.state.knowledge_service
 
 
 def get_knowledge_catalog(request: Request) -> KnowledgeCatalogService:
@@ -73,21 +74,28 @@ def get_knowledge_catalog(request: Request) -> KnowledgeCatalogService:
 
 
 def get_document_service(
+    request: Request,
     catalog: KnowledgeCatalogService = Depends(get_knowledge_catalog),
+    principal: Principal = Depends(require_permission("knowledge.document.read")),
 ) -> DocumentService:
     """创建直接读取知识目录的制度服务。"""
 
-    return DocumentService(catalog)
+    resolver = request.app.state.document_access_resolver
+    return DocumentService(catalog, resolver, principal)
 
 
 def get_chat_service(
+    request: Request,
     session: Session = Depends(get_db_session),
-    rag_client: RagApiClient = Depends(get_rag_api_client),
+    knowledge_service: KnowledgeService = Depends(get_knowledge_service),
     principal: Principal = Depends(require_permission("chat.read")),
+    catalog: KnowledgeCatalogService = Depends(get_knowledge_catalog),
 ) -> ChatService:
-    """创建会话服务，并注入唯一 RAG HTTP 查询入口。"""
+    """创建会话服务，并注入唯一进程内知识查询入口。"""
 
-    return ChatService(session, rag_client, principal.user_id)
+    access_resolver = request.app.state.document_access_resolver
+    scope_resolver = QueryScopeResolver(catalog, access_resolver)
+    return ChatService(session, knowledge_service, principal, scope_resolver)
 
 
 def get_diagnostic_service(session: Session = Depends(get_db_session)) -> DiagnosticService:

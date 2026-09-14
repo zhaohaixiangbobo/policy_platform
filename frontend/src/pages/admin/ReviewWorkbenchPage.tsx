@@ -1,10 +1,12 @@
 /**
  * 文件说明：展示真实ParseRun/ChunkRun详情、质量问题、PDF页码和标准审核决策。
  */
-import { ArrowRightOutlined, CheckCircleOutlined, CloseCircleOutlined, FileSearchOutlined, ReloadOutlined, WarningOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Empty, Form, Input, InputNumber, List, Modal, Pagination, Popconfirm, Radio, Segmented, Select, Space, Spin, Tabs, Tag, Typography, message } from 'antd';
+import { ArrowRightOutlined, CheckCircleOutlined, CloseCircleOutlined, FileSearchOutlined, FileTextOutlined, ReloadOutlined, WarningOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Empty, Form, Input, InputNumber, List, Modal, Pagination, Popconfirm, Radio, Segmented, Select, Space, Spin, Tabs, Tag, Tree, Typography, message } from 'antd';
+import type { CSSProperties, Key } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { DataNode } from 'antd/es/tree';
 
 import { batchReviewItems, createParseCorrection, decideArticleTitle, decideReview, decideReviewItem, getReviewDetail, listReviews, reviewPdfUrl } from '../../api/admin';
 import type { ReviewDetail, ReviewQueueItem } from '../../api/admin';
@@ -58,6 +60,83 @@ function renderMetric(key: string, value: unknown) {
   return String(value ?? '-');
 }
 
+type ReviewNode = ReviewDetail['nodes'][number];
+
+interface ReviewNodeTreeData extends DataNode {
+  key: string;
+  title: string;
+  reviewNode: ReviewNode;
+  descendantCount: number;
+  children?: ReviewNodeTreeData[];
+}
+
+function reviewNodeTitle(node: ReviewNode): string {
+  const number = typeof node.node_number === 'string' ? node.node_number.trim() : '';
+  const title = node.title?.trim() ?? '';
+  if (number && title) return `${number} ${title}`;
+  return number || title || node.path_text?.trim() || node.text?.trim().slice(0, 60) || `Node ${node.id}`;
+}
+
+/** 使用Parser输出的真实parent_id构建审核树，不根据标题文本推断层级。 */
+function buildReviewNodeTree(nodes: ReviewNode[]): ReviewNodeTreeData[] {
+  const byId = new Map<number, ReviewNodeTreeData>();
+  const roots: ReviewNodeTreeData[] = [];
+  nodes.forEach((node) => {
+    byId.set(node.id, {
+      key: String(node.id),
+      title: reviewNodeTitle(node),
+      reviewNode: node,
+      descendantCount: 0,
+    });
+  });
+  nodes.forEach((node) => {
+    const item = byId.get(node.id);
+    const parent = node.parent_id != null && node.parent_id !== node.id ? byId.get(node.parent_id) : undefined;
+    if (!item) return;
+    if (parent) parent.children = [...(parent.children ?? []), item];
+    else roots.push(item);
+  });
+
+  const orderOf = (item: ReviewNodeTreeData) => Number(item.reviewNode.order_no ?? item.reviewNode.id);
+  const finalize = (item: ReviewNodeTreeData, visiting: Set<string>): number => {
+    if (visiting.has(item.key)) return 0;
+    visiting.add(item.key);
+    item.children?.sort((left, right) => orderOf(left) - orderOf(right));
+    item.descendantCount = (item.children ?? []).reduce(
+      (count, child) => count + 1 + finalize(child, visiting),
+      0,
+    );
+    visiting.delete(item.key);
+    return item.descendantCount;
+  };
+  roots.sort((left, right) => orderOf(left) - orderOf(right));
+  roots.forEach((root) => finalize(root, new Set()));
+  return roots;
+}
+
+function filterReviewNodeTree(nodes: ReviewNodeTreeData[], keyword: string): ReviewNodeTreeData[] {
+  const query = keyword.trim().toLocaleLowerCase();
+  if (!query) return nodes;
+  return nodes.flatMap((item) => {
+    const node = item.reviewNode;
+    const searchable = [item.title, node.text, node.path_text, node.node_type, `Node ${node.id}`]
+      .filter((value): value is string => typeof value === 'string')
+      .join(' ')
+      .toLocaleLowerCase();
+    const children = filterReviewNodeTree(item.children ?? [], query);
+    return searchable.includes(query) || children.length ? [{ ...item, children }] : [];
+  });
+}
+
+function collectReviewNodeKeys(nodes: ReviewNodeTreeData[]): string[] {
+  return nodes.flatMap((item) => [item.key, ...collectReviewNodeKeys(item.children ?? [])]);
+}
+
+function reviewSourceUrl(jobId: string, page: number | null): string {
+  const source = reviewPdfUrl(jobId);
+  return page != null && page > 0 ? `${source}#page=${page}` : source;
+}
+
 export function ReviewWorkbenchPage() {
   const navigate = useNavigate();
   const [items, setItems] = useState<ReviewQueueItem[]>([]);
@@ -75,6 +154,10 @@ export function ReviewWorkbenchPage() {
   const [detail, setDetail] = useState<ReviewDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedContent, setSelectedContent] = useState('');
+  const [selectedSourcePage, setSelectedSourcePage] = useState<number | null>(null);
+  const [selectedNodeKey, setSelectedNodeKey] = useState<Key | null>(null);
+  const [nodeKeyword, setNodeKeyword] = useState('');
+  const [expandedNodeKeys, setExpandedNodeKeys] = useState<Key[]>([]);
   const [outcome, setOutcome] = useState<'PASS' | 'PASS_WITH_WARNING' | 'REJECT'>('PASS');
   const [comment, setComment] = useState('');
   const [batchIssueOpen, setBatchIssueOpen] = useState(false);
@@ -87,6 +170,8 @@ export function ReviewWorkbenchPage() {
   const [nextNotice, setNextNotice] = useState<{ kind: 'METADATA_WAIT' | 'INDEX_WAIT'; jobId: string } | null>(null);
   const [correctionNode, setCorrectionNode] = useState<ReviewDetail['nodes'][number] | null>(null);
   const detailRequestRevision = useRef(0);
+  const reviewMainRef = useRef<HTMLDivElement>(null);
+  const [reviewMainHeight, setReviewMainHeight] = useState<number>();
   const [correctionForm] = Form.useForm<{ title?: string; node_number?: string; node_type?: string; parent_id?: number; order_no?: number }>();
 
   const refresh = async (
@@ -142,6 +227,10 @@ export function ReviewWorkbenchPage() {
     setComment('');
     setNextNotice(null);
     setSelectedContent('');
+    setSelectedSourcePage(null);
+    setSelectedNodeKey(null);
+    setNodeKeyword('');
+    setExpandedNodeKeys([]);
     setActiveTab('content');
     setDetail(null);
     if (!selected) { setDetailLoading(false); return; }
@@ -162,6 +251,18 @@ export function ReviewWorkbenchPage() {
         if (detailRequestRevision.current === revision) setDetailLoading(false);
       });
   }, [selected?.job_id, selected?.target_type]);
+  useEffect(() => {
+    const element = reviewMainRef.current;
+    if (!selected || !element) {
+      setReviewMainHeight(undefined);
+      return;
+    }
+    const updateHeight = () => setReviewMainHeight(Math.ceil(element.getBoundingClientRect().height));
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [selected?.job_id, selected?.target_type]);
 
   const unresolvedIssues = useMemo(() => detail?.issues.filter((item) => !item.resolved) ?? [], [detail]);
   const pendingFieldCount = useMemo(() => detail?.fields.filter((item) => String(item.review_status) === 'pending').length ?? 0, [detail]);
@@ -173,6 +274,9 @@ export function ReviewWorkbenchPage() {
   const processedCount = (queueCounts.processed_parse ?? 0) + (queueCounts.processed_chunk ?? 0);
   const batchNodeIds = useMemo(() => detail?.target_type === 'PARSE_RUN' ? detail.nodes.filter((item) => String(item.review_status) === 'pending').map((item) => item.id) : [], [detail]);
   const batchIssueIds = useMemo(() => detail?.issues.filter((item) => !item.resolved && item.severity.toLowerCase() !== 'error').map((item) => item.id) ?? [], [detail]);
+  const reviewNodeTree = useMemo(() => buildReviewNodeTree(detail?.target_type === 'PARSE_RUN' ? detail.nodes : []), [detail]);
+  const filteredReviewNodeTree = useMemo(() => filterReviewNodeTree(reviewNodeTree, nodeKeyword), [reviewNodeTree, nodeKeyword]);
+  const allReviewNodeKeys = useMemo(() => collectReviewNodeKeys(reviewNodeTree), [reviewNodeTree]);
   const approvalBlocked = outcome !== 'REJECT' && (
     (selected?.target_type === 'PARSE_RUN' && pendingNodeCount > 0) || blockingIssueCount > 0
   );
@@ -270,28 +374,71 @@ export function ReviewWorkbenchPage() {
   };
 
   const contentTab = detail?.target_type === 'PARSE_RUN' ? (
-      <List dataSource={detail.nodes} renderItem={(node) => (
-      <List.Item
-        className="review-content-row"
-        actions={String(node.review_status) === 'pending'
-          ? String(node.rule_id) === 'NODE_ARTICLE_TITLE_HEURISTIC_V2'
-            ? [
-                <Button key="confirm-title" type="link" onClick={(event) => { event.stopPropagation(); void handleItem('node', node.id, 'confirm'); }}>确认条标题</Button>,
-                <Button key="adjust-title" type="link" onClick={(event) => { event.stopPropagation(); openArticleTitleDecision(node); }}>调整判断</Button>,
-              ]
-            : [<Button key="confirm" type="link" onClick={(event) => { event.stopPropagation(); void handleItem('node', node.id, 'confirm'); }}>确认结构</Button>]
-          : String(detail.run.review_status) === 'approved'
-            ? [<Button key="correct" type="link" onClick={(event) => { event.stopPropagation(); openCorrection(node); }}>派生修正</Button>]
-            : undefined}
-        onClick={() => setSelectedContent(node.text || node.title || '')}
-      >
-        <div><Tag>{node.node_type}</Tag><strong>{node.path_text || node.title || `Node ${node.id}`}</strong> <Tag color={(nodeReviewLabel[String(node.review_status)] ?? { color: 'default' }).color}>{(nodeReviewLabel[String(node.review_status)] ?? { text: String(node.review_status) }).text}</Tag></div>
-        <small>第 {node.page_start ?? '-'}—{node.page_end ?? node.page_start ?? '-'} 页 · Node {node.id}{node.review_reason ? ` · ${node.review_reason}` : ''}</small>
-      </List.Item>
-    )} />
+    <div className="review-node-tree-panel">
+      <div className="review-node-tree-toolbar">
+        <Input.Search
+          allowClear
+          value={nodeKeyword}
+          placeholder="搜索章节、条款或正文内容"
+          onChange={(event) => {
+            const value = event.target.value;
+            setNodeKeyword(value);
+            if (value.trim()) setExpandedNodeKeys(allReviewNodeKeys);
+          }}
+        />
+        <Space size={6}>
+          <Button size="small" onClick={() => setExpandedNodeKeys(allReviewNodeKeys)}>全部展开</Button>
+          <Button size="small" onClick={() => setExpandedNodeKeys([])}>全部收起</Button>
+        </Space>
+      </div>
+      {filteredReviewNodeTree.length ? (
+        <Tree<ReviewNodeTreeData>
+          blockNode
+          showLine
+          treeData={filteredReviewNodeTree}
+          expandedKeys={expandedNodeKeys}
+          selectedKeys={selectedNodeKey == null ? [] : [selectedNodeKey]}
+          onExpand={(keys) => setExpandedNodeKeys(keys)}
+          onSelect={(_, info) => {
+            const item = info.node.reviewNode;
+            setSelectedNodeKey(info.node.key);
+            setSelectedContent(item.text || item.title || '');
+            setSelectedSourcePage(item.page_start);
+          }}
+          titleRender={(item) => {
+            const node = item.reviewNode;
+            const review = nodeReviewLabel[String(node.review_status)] ?? { text: String(node.review_status), color: 'default' };
+            const isPending = String(node.review_status) === 'pending';
+            const isTitleDecision = String(node.rule_id) === 'NODE_ARTICLE_TITLE_HEURISTIC_V2';
+            const isApprovedRun = String(detail.run.review_status) === 'approved';
+            return (
+              <div className="review-node-tree-title">
+                <div className="review-node-tree-main">
+                  <Space size={6} wrap>
+                    <Tag>{node.node_type}</Tag>
+                    <strong>{item.title}</strong>
+                    <Tag color={review.color}>{review.text}</Tag>
+                    {item.descendantCount > 0 && <Typography.Text type="secondary">（{item.descendantCount}）</Typography.Text>}
+                  </Space>
+                  <small>第 {node.page_start ?? '-'}—{node.page_end ?? node.page_start ?? '-'} 页 · Node {node.id}{node.review_reason ? ` · ${node.review_reason}` : ''}</small>
+                </div>
+                <Space size={2} className="review-node-tree-actions">
+                  {isPending && isTitleDecision ? <>
+                    <Button type="link" size="small" onClick={(event) => { event.stopPropagation(); void handleItem('node', node.id, 'confirm'); }}>确认条标题</Button>
+                    <Button type="link" size="small" onClick={(event) => { event.stopPropagation(); openArticleTitleDecision(node); }}>调整判断</Button>
+                  </> : null}
+                  {isPending && !isTitleDecision ? <Button type="link" size="small" onClick={(event) => { event.stopPropagation(); void handleItem('node', node.id, 'confirm'); }}>确认结构</Button> : null}
+                  {!isPending && isApprovedRun ? <Button type="link" size="small" onClick={(event) => { event.stopPropagation(); openCorrection(node); }}>派生修正</Button> : null}
+                </Space>
+              </div>
+            );
+          }}
+        />
+      ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有匹配的解析节点" />}
+    </div>
   ) : (
     <List dataSource={detail?.chunks ?? []} renderItem={(chunk) => (
-      <List.Item className="review-content-row" onClick={() => setSelectedContent(chunk.retrieval_text)}>
+      <List.Item className="review-content-row" onClick={() => { setSelectedContent(chunk.retrieval_text); setSelectedSourcePage(chunk.page_start); }}>
         <div><Tag color={chunk.is_retrievable ? 'blue' : 'default'}>{chunkTypeLabel[chunk.chunk_type] ?? chunk.chunk_type}</Tag><strong>{chunk.path_text || chunk.chunk_key}</strong></div>
         <small>{chunk.char_count} 字 · {chunk.token_count ?? '-'} tokens · 来源Node {chunk.sources.length}</small>
       </List.Item>
@@ -313,7 +460,12 @@ export function ReviewWorkbenchPage() {
       ];
 
   const queuePanel = (
-    <Card className="review-queue" title="运行与历史" variant="borderless">
+    <Card
+      className="review-queue"
+      title="运行与历史"
+      variant="borderless"
+      style={reviewMainHeight == null ? undefined : { height: reviewMainHeight }}
+    >
       <Input.Search
         allowClear
         value={keywordInput}
@@ -374,9 +526,25 @@ export function ReviewWorkbenchPage() {
       {!selected ? <div className="review-workbench">{queuePanel}<Card className="review-main" variant="borderless"><Empty image={<UiIcon icon={FileSearchOutlined} />} description="当前筛选条件下没有审核运行" /></Card></div> : (
         <div className="review-workbench">
           {queuePanel}
-          <Card className="review-main" variant="borderless" title={`${runTypeLabel[selected.target_type]}审核`} extra={<Typography.Text copyable>{selected.target_id}</Typography.Text>}>
-            <Spin spinning={detailLoading}>
-              {detail && <>
+          <div ref={reviewMainRef} className="review-main-column">
+            <Card
+              className="review-main"
+              variant="borderless"
+              title={`${runTypeLabel[selected.target_type]}审核`}
+              extra={detail?.pdf_available ? (
+                <Button
+                  type="link"
+                  icon={<UiIcon icon={FileTextOutlined} />}
+                  href={reviewSourceUrl(selected.job_id, selectedSourcePage)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  查看原文
+                </Button>
+              ) : null}
+            >
+              <Spin spinning={detailLoading}>
+                {detail && <>
                 <div className="review-document-meta"><Typography.Title level={4}>{String(detail.run.document_title ?? selected.title)}</Typography.Title><Space wrap><Tag color="blue">{stateLabel[selected.state] ?? selected.state}</Tag><span>制度ID：{selected.document_id}</span><span>审核状态：{String(detail.run.review_status ?? '-')}</span>{detail.run.render_engine && <span>渲染引擎：{detail.run.render_engine}</span>}</Space></div>
                 <div className="review-metrics">{Object.entries(detail.metrics).filter(([, value]) => typeof value !== 'object').map(([key, value]) => <div key={key}><small>{metricLabel[key] ?? key}</small><strong>{renderMetric(key, value)}</strong></div>)}</div>
                 {selected.processing_status === 'PENDING' && (batchNodeIds.length > 0 || batchIssueIds.length > 0) && <Alert showIcon type="info" message="当前运行可批量处理" description={batchNodeIds.length > 0 ? `有 ${batchNodeIds.length} 个节点待确认。批量操作仅作用于当前运行。` : `节点已经全部确认，当前剩余 ${batchIssueIds.length} 个普通警告；阻断问题不会进入批量接受。`} action={<Space>{batchNodeIds.length > 0 && <Popconfirm title={`确认当前运行全部 ${batchNodeIds.length} 个待确认节点？`} onConfirm={() => void handleBatch('node', batchNodeIds, 'confirm')}><Button size="small" type="primary">批量确认节点</Button></Popconfirm>}{batchIssueIds.length > 0 && <Button size="small" type="primary" onClick={() => { setActiveTab('issues'); setBatchIssueOpen(true); }}>批量接受普通警告</Button>}</Space>} />}
@@ -388,10 +556,18 @@ export function ReviewWorkbenchPage() {
                 ]} />
                 {selectedContent && <Card size="small" title="当前选中内容" className="review-selected-content"><Typography.Paragraph>{selectedContent}</Typography.Paragraph></Card>}
                 {((selected.target_type === 'PARSE_RUN' && selected.state === 'PARSE_REVIEW') || (selected.target_type === 'CHUNK_RUN' && selected.state === 'CHUNK_REVIEW')) ? <div className="review-decision">{approvalBlocked && <Alert showIcon type="warning" message="暂不能通过" description={blockingIssueCount > 0 ? `还有 ${blockingIssueCount} 个阻断问题待处理。` : `还有 ${pendingNodeCount} 个结构节点待确认，请先在上方页签逐项处理。元数据字段将在下一节点统一确认。`} />}<Radio.Group value={outcome} onChange={(event) => setOutcome(event.target.value)}><Radio.Button value="PASS"><UiIcon icon={CheckCircleOutlined} /> 通过</Radio.Button><Radio.Button value="PASS_WITH_WARNING"><UiIcon icon={WarningOutlined} /> 警告通过</Radio.Button><Radio.Button value="REJECT"><UiIcon icon={CloseCircleOutlined} /> 驳回</Radio.Button></Radio.Group><Input.TextArea value={comment} onChange={(event) => setComment(event.target.value)} rows={3} placeholder={outcome === 'PASS_WITH_WARNING' ? '请逐项说明接受警告的理由' : outcome === 'REJECT' ? '必须填写驳回原因' : '可填写审核意见'} /><Button type="primary" disabled={approvalBlocked} onClick={() => void submit()}>提交审核结果</Button></div> : <div className="review-history-notice"><Tag color="green">只读历史</Tag><Typography.Text type="secondary">该运行已完成审核，当前详情不可修改。</Typography.Text></div>}
-              </>}
-            </Spin>
+                </>}
+              </Spin>
+            </Card>
+          </div>
+          <Card
+            className="review-quality"
+            title="质量检查"
+            variant="borderless"
+            style={reviewMainHeight == null ? undefined : ({ '--review-main-height': `${reviewMainHeight}px` } as CSSProperties)}
+          >
+            {detail ? <><div className="quality-list">{Object.entries(detail.metrics).filter(([, value]) => typeof value !== 'object').map(([key, value]) => <div className="quality-line" key={key}><span>{metricLabel[key] ?? key}</span><strong>{renderMetric(key, value)}</strong></div>)}</div><div className="quality-summary"><Tag color={unresolvedIssues.length ? 'orange' : 'green'}>{unresolvedIssues.length ? `${unresolvedIssues.length} 个未处理问题` : '检查通过'}</Tag></div></> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />}
           </Card>
-          <Card className="review-quality" title="质量检查" variant="borderless">{detail ? <><div className="quality-list">{Object.entries(detail.metrics).filter(([, value]) => typeof value !== 'object').map(([key, value]) => <div className="quality-line" key={key}><span>{metricLabel[key] ?? key}</span><strong>{renderMetric(key, value)}</strong></div>)}</div><div className="quality-summary"><Tag color={unresolvedIssues.length ? 'orange' : 'green'}>{unresolvedIssues.length ? `${unresolvedIssues.length} 个未处理问题` : '检查通过'}</Tag></div></> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />}</Card>
         </div>
       )}
       <Modal title="派生ParseRun结构修正" open={Boolean(correctionNode)} onCancel={() => setCorrectionNode(null)} onOk={() => void submitCorrection()} okText="创建返工任务">

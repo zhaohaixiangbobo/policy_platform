@@ -10,6 +10,7 @@ import type {
 export interface DocumentFilters {
   keyword?: string;
   status?: string;
+  query_scope?: 'CURRENT' | 'HISTORICAL';
   issuer?: string;
   department?: string;
   publish_date_from?: string;

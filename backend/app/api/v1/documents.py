@@ -1,6 +1,7 @@
 """文件说明：暴露active制度列表、详情、Node正文和受控PDF接口。"""
 
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -29,6 +30,7 @@ router = APIRouter(
 def list_documents(
     keyword: str | None = Query(default=None, max_length=200),
     status: str | None = Query(default=None, max_length=80),
+    query_scope: Literal["CURRENT", "HISTORICAL"] | None = None,
     issuer: str | None = Query(default=None, max_length=300),
     department: str | None = Query(default=None, max_length=300),
     publish_date_from: date | None = None,
@@ -45,6 +47,7 @@ def list_documents(
     return service.list_documents(
         keyword=keyword,
         status=status,
+        query_scope=query_scope,
         issuer=issuer,
         department=department,
         publish_date_from=publish_date_from,

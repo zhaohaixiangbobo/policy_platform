@@ -1,7 +1,7 @@
 /**
  * 文件说明：提供正式文件版本、制度系列、元数据修订、废止和索引发布的一体化治理页面。
  */
-import { CheckOutlined, EditOutlined, FileSyncOutlined, LinkOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons';
+import { CheckOutlined, ClockCircleOutlined, EditOutlined, FileSyncOutlined, LinkOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Drawer, Form, Input, List, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import type { Key } from 'react';
@@ -33,6 +33,31 @@ const fieldLabels: Record<string, string> = {
   confidentiality_level: '密级', addressee_text: '主送对象',
 };
 
+const candidateFieldLabels: Record<string, string> = {
+  ...fieldLabels,
+  parser_profile: '解析结构类型',
+};
+
+type DraftRequestType = 'CORRECTION' | 'REPEAL' | 'EXPIRY';
+
+const sourceTypeByRequest: Record<DraftRequestType, MetadataRevision['source_type']> = {
+  CORRECTION: 'MANUAL_CORRECTION',
+  REPEAL: 'REPEAL',
+  EXPIRY: 'EXPIRY',
+};
+
+const draftActionLabels: Record<DraftRequestType, string> = {
+  CORRECTION: '元数据修订',
+  REPEAL: '登记废止',
+  EXPIRY: '登记失效',
+};
+
+function localDateToday(): string {
+  // HTML date 输入使用本地日期，避免 UTC 转换在东八区日界附近出现偏差。
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
+
 export function KnowledgeGovernancePage() {
   const navigate = useNavigate();
   const [documents, setDocuments] = useState<ManagedDocument[]>([]);
@@ -49,6 +74,8 @@ export function KnowledgeGovernancePage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [seriesOpen, setSeriesOpen] = useState(false);
+  const [pendingDraftType, setPendingDraftType] = useState<DraftRequestType | null>(null);
+  const [pendingDraftDirty, setPendingDraftDirty] = useState(false);
   const [form] = Form.useForm<Partial<MetadataRevision>>();
   const [seriesForm] = Form.useForm<{ series_id?: number; canonical_title?: string }>();
 
@@ -77,7 +104,38 @@ export function KnowledgeGovernancePage() {
   }, [publications.map((item) => `${item.id}:${item.status}`).join('|')]);
 
   const current = detail?.revisions[0] ?? null;
-  useEffect(() => { if (current) form.setFieldsValue(current); else form.resetFields(); }, [current?.id]);
+  const activeRevision = detail?.revisions.find(
+    (item) => item.id === Number(detail.document.active_metadata_revision_id),
+  );
+  const workingRevision = useMemo<MetadataRevision | null>(() => {
+    if (!pendingDraftType) return current;
+    const base = activeRevision ?? current;
+    if (!base) return null;
+    return {
+      ...base,
+      id: 0,
+      revision_no: Math.max(...(detail?.revisions.map((item) => item.revision_no) ?? [0])) + 1,
+      lifecycle_status: 'DRAFT',
+      source_type: sourceTypeByRequest[pendingDraftType],
+      status: pendingDraftType === 'REPEAL' ? 'repealed' : pendingDraftType === 'EXPIRY' ? 'expired' : base.status,
+      change_reason: pendingDraftType === 'REPEAL' ? '登记制度废止' : null,
+      repeal_date: pendingDraftType === 'REPEAL' ? localDateToday() : null,
+      repeal_reason: null,
+      repeal_evidence: null,
+      expiry_date: pendingDraftType === 'EXPIRY' ? null : base.expiry_date,
+    };
+  }, [activeRevision, current, detail?.revisions, pendingDraftType]);
+  useEffect(() => {
+    if (workingRevision) {
+      form.setFieldsValue({
+        ...workingRevision,
+        repeal_date: workingRevision.source_type === 'REPEAL'
+          ? workingRevision.repeal_date || localDateToday()
+          : workingRevision.repeal_date,
+      });
+    }
+    else form.resetFields();
+  }, [workingRevision?.id, workingRevision?.source_type]);
   const candidateGroups = useMemo(() => {
     const groups: Record<string, ManagedDocumentDetail['candidates']> = {};
     for (const item of detail?.candidates ?? []) (groups[item.field_name] ??= []).push(item);
@@ -85,36 +143,89 @@ export function KnowledgeGovernancePage() {
   }, [detail]);
 
   const openDetail = async (documentId: number) => {
-    try { setDetail(await getManagedDocument(documentId)); }
+    try {
+      setPendingDraftType(null);
+      setPendingDraftDirty(false);
+      setDetail(await getManagedDocument(documentId));
+    }
     catch (error) { message.error(error instanceof Error ? error.message : '元数据详情加载失败'); }
   };
   const reloadDetail = async () => { if (detail) await openDetail(detail.document.id); await refresh(); };
 
   const save = async () => {
-    if (!detail || !current) return;
+    if (!detail || !workingRevision) return;
+    if (pendingDraftType && !pendingDraftDirty) {
+      message.info('尚未修改任何内容，未创建草稿');
+      return;
+    }
+    let materialized = false;
     try {
       const values = await form.validateFields();
-      await updateMetadataRevision(detail.document.id, current.id, values);
-      message.success('元数据草稿已保存'); await reloadDetail();
-    } catch (error) { if (error instanceof Error) message.error(error.message); }
+      let revisionId = workingRevision.id;
+      if (pendingDraftType) {
+        const created = await createMetadataDraft(
+          detail.document.id,
+          pendingDraftType,
+          typeof values.change_reason === 'string' ? values.change_reason : undefined,
+        );
+        revisionId = created.revision.id;
+        materialized = true;
+      }
+      await updateMetadataRevision(detail.document.id, revisionId, values);
+      message.success('元数据草稿已保存');
+      await reloadDetail();
+    } catch (error) {
+      if (materialized) await reloadDetail();
+      if (error instanceof Error) message.error(error.message);
+    }
   };
-  const createDraft = async (type: 'CORRECTION' | 'REPEAL') => {
-    if (!detail) return;
-    try {
-      await createMetadataDraft(detail.document.id, type, type === 'REPEAL' ? '登记制度废止' : '修订制度元数据');
-      message.success(type === 'REPEAL' ? '已创建废止修订草稿' : '已创建元数据修订草稿'); await reloadDetail();
-    } catch (error) { message.error(error instanceof Error ? error.message : '创建修订失败'); }
+  const beginDraft = (type: DraftRequestType) => {
+    if (!detail || !current) return;
+    const actionLabel = draftActionLabels[type];
+    const lifecycleDescription = type === 'REPEAL'
+      ? '废止是管理机关主动终止制度效力，需要填写废止原因和依据。'
+      : type === 'EXPIRY'
+        ? '失效是制度因有效期届满等客观条件不再有效。'
+        : '元数据修订只校正文号、机构、日期等信息，不改变制度效力状态。';
+    Modal.confirm({
+      title: `进入${actionLabel}？`,
+      content: <div><p>{lifecycleDescription}</p><p>此操作只进入编辑态；保存或提交后才会创建草稿，直接退出不会保存。</p></div>,
+      okText: '进入编辑',
+      cancelText: '取消',
+      onOk: () => {
+        setPendingDraftType(type);
+        setPendingDraftDirty(false);
+      },
+    });
   };
   const submit = async () => {
-    if (!detail || !current) return;
+    if (!detail || !workingRevision) return;
+    if (pendingDraftType && !pendingDraftDirty) {
+      message.info('尚未修改任何内容，未创建草稿');
+      return;
+    }
     setActionLoading(true);
+    let materialized = false;
     try {
       const values = await form.validateFields();
-      await updateMetadataRevision(detail.document.id, current.id, values);
-      await submitMetadataRevision(detail.document.id, current.id);
+      let revisionId = workingRevision.id;
+      if (pendingDraftType) {
+        const created = await createMetadataDraft(
+          detail.document.id,
+          pendingDraftType,
+          typeof values.change_reason === 'string' ? values.change_reason : undefined,
+        );
+        revisionId = created.revision.id;
+        materialized = true;
+      }
+      await updateMetadataRevision(detail.document.id, revisionId, values);
+      await submitMetadataRevision(detail.document.id, revisionId);
       message.success('当前内容已保存并提交审核');
       await reloadDetail();
-    } catch (error) { if (error instanceof Error) message.error(error.message); }
+    } catch (error) {
+      if (materialized) await reloadDetail();
+      if (error instanceof Error) message.error(error.message);
+    }
     finally { setActionLoading(false); }
   };
   const review = async (approved: boolean) => {
@@ -137,8 +248,10 @@ export function KnowledgeGovernancePage() {
     catch (error) { message.error(error instanceof Error ? error.message : '创建发布请求失败'); }
   };
 
-  const canCreateRevision = current?.lifecycle_status === 'PUBLISHED' || current?.lifecycle_status === 'REJECTED';
-  const canRegisterRepeal = current?.lifecycle_status === 'PUBLISHED' && current?.status === 'effective';
+  const canCreateRevision = !pendingDraftType && (current?.lifecycle_status === 'PUBLISHED' || current?.lifecycle_status === 'REJECTED');
+  const lifecycleActionBlocked = Boolean(pendingDraftType) || current?.lifecycle_status === 'DRAFT' || current?.lifecycle_status === 'PENDING_REVIEW';
+  const canRegisterLifecycleChange = activeRevision?.status === 'effective' && !lifecycleActionBlocked;
+  const statusLocked = ['MANUAL_CORRECTION', 'REPEAL', 'EXPIRY'].includes(workingRevision?.source_type ?? '');
 
   const columns = [
     { title: '正式文件版本', key: 'title', render: (_: unknown, row: ManagedDocument) => <div><strong>{row.title || row.file_name}</strong><div><Typography.Text type="secondary">Document {row.id} · 系列版本 {row.document_version_no}</Typography.Text></div></div> },
@@ -169,20 +282,29 @@ export function KnowledgeGovernancePage() {
     </Card>
     <Card title="索引发布生命周期" variant="borderless"><List dataSource={publications.slice(0, 8)} locale={{ emptyText: '尚无V2发布请求' }} renderItem={(item) => <List.Item actions={item.status === 'READY_TO_PUBLISH' ? [<Popconfirm key="publish" title="确认切换Alias并正式发布？" onConfirm={() => void confirmIndexPublication(item.id).then(() => { message.success('发布已排队'); return refresh(); }).catch((error) => message.error(error.message))}><Button type="primary" size="small">确认发布</Button></Popconfirm>] : item.status === 'FAILED' && item.can_retry ? [<Popconfirm key="retry" title="按原发布请求重试？" onConfirm={() => void retryIndexPublication(item.id).then(() => { message.success('发布请求已重新排队'); return refresh(); }).catch((error) => message.error(error.message))}><Button size="small">重试原请求</Button></Popconfirm>] : undefined}><Space><Tag color={item.status === 'PUBLISHED' ? 'green' : item.status === 'FAILED' ? 'red' : 'blue'}>{publicationLabels[item.status] ?? item.status}</Tag><Typography.Text>制度 {item.document_ids.join('、')} · IndexRun {item.index_run_id ?? '待生成'}</Typography.Text>{item.status === 'FAILED' && !item.can_retry && <Tag>历史记录，仅供审计</Tag>}{item.error_summary && <Typography.Text type="danger">{item.error_summary}</Typography.Text>}</Space></List.Item>} /></Card>
 
-    <Drawer width={980} title="制度元数据治理" open={Boolean(detail)} onClose={() => setDetail(null)} extra={<Space><Button icon={<UiIcon icon={LinkOutlined} />} onClick={() => { seriesForm.setFieldsValue({ series_id: Number(detail?.document.series_id) }); setSeriesOpen(true); }}>制度系列</Button>{canCreateRevision && <Button icon={<UiIcon icon={EditOutlined} />} onClick={() => void createDraft('CORRECTION')}>新建修订</Button>}{canRegisterRepeal && <Button danger icon={<UiIcon icon={StopOutlined} />} onClick={() => void createDraft('REPEAL')}>登记废止</Button>}</Space>}>
-      {detail && current && <div className="metadata-workbench">
-        <section><Card size="small" title={`修订 ${current.revision_no} · ${lifecycleLabels[current.lifecycle_status] ?? current.lifecycle_status}`}>
-          <Form form={form} layout="vertical" disabled={current.lifecycle_status !== 'DRAFT'}>
+    <Drawer width={980} title="制度元数据治理" open={Boolean(detail)} onClose={() => { setPendingDraftType(null); setPendingDraftDirty(false); setDetail(null); }} extra={<Space><Button icon={<UiIcon icon={LinkOutlined} />} onClick={() => { seriesForm.setFieldsValue({ series_id: Number(detail?.document.series_id) }); setSeriesOpen(true); }}>制度系列</Button>{canCreateRevision && <Button icon={<UiIcon icon={EditOutlined} />} onClick={() => beginDraft('CORRECTION')}>新建修订</Button>}{canRegisterLifecycleChange && <Button icon={<UiIcon icon={ClockCircleOutlined} />} onClick={() => beginDraft('EXPIRY')}>登记失效</Button>}{canRegisterLifecycleChange && <Button danger icon={<UiIcon icon={StopOutlined} />} onClick={() => beginDraft('REPEAL')}>登记废止</Button>}</Space>}>
+      {detail && workingRevision && <div className="metadata-workbench">
+        <section><Card size="small" title={pendingDraftType ? `${draftActionLabels[pendingDraftType]} · 未创建草稿` : `修订 ${workingRevision.revision_no} · ${lifecycleLabels[workingRevision.lifecycle_status] ?? workingRevision.lifecycle_status}`}>
+          {pendingDraftType && <Alert showIcon type="warning" message="当前只是本地编辑态" description="修改内容并点击保存或提交后才会创建服务端草稿；直接退出不会留下修订记录。" style={{ marginBottom: 16 }} />}
+          <Form form={form} layout="vertical" disabled={workingRevision.lifecycle_status !== 'DRAFT'} onValuesChange={() => { if (pendingDraftType) setPendingDraftDirty(true); }}>
             <div className="metadata-form-grid">
-              {Object.entries(fieldLabels).map(([name, label]) => name === 'status' ? <Form.Item key={name} name={name} label={label}><Select options={[{ value: 'effective', label: '现行有效' }, { value: 'repealed', label: '已废止' }, { value: 'expired', label: '已失效' }, { value: 'unknown', label: '状态待确认' }]} /></Form.Item> : <Form.Item key={name} name={name} label={label}><Input /></Form.Item>)}
+              {Object.entries(fieldLabels).map(([name, label]) => {
+                if (name === 'status') {
+                  return <Form.Item key={name} name={name} label={label}><Select disabled={statusLocked} options={[{ value: 'effective', label: '现行有效' }, { value: 'repealed', label: '已废止' }, { value: 'expired', label: '已失效' }, { value: 'unknown', label: '状态待确认' }]} /></Form.Item>;
+                }
+                const expiryRequired = workingRevision.source_type === 'EXPIRY' && name === 'expiry_date';
+                const isDateField = ['publish_date', 'effective_date', 'expiry_date'].includes(name);
+                return <Form.Item key={name} name={name} label={label} rules={expiryRequired ? [{ required: true, message: '请填写失效日期' }] : undefined}><Input type={isDateField ? 'date' : 'text'} /></Form.Item>;
+              })}
             </div>
             <Form.Item name="status_confirmation_note" label="状态待确认保留原因"><Input.TextArea rows={2} /></Form.Item>
-            <Form.Item name="change_reason" label="修订原因"><Input.TextArea rows={2} /></Form.Item>
-            {(current.source_type === 'REPEAL' || current.status === 'repealed') && <><div className="metadata-form-grid"><Form.Item name="repeal_date" label="废止日期"><Input /></Form.Item><Form.Item name="repeal_reason" label="废止原因"><Input /></Form.Item><Form.Item name="repeal_evidence" label="废止依据"><Input /></Form.Item></div><Alert showIcon type="info" message="废止状态与制度关系分别留痕" description="本页确认该文件版本的废止元数据；如果由另一份制度废止，还应在制度关系页建立REPEALS关系并绑定原文证据。" action={<Button size="small" onClick={() => navigate('/admin/relations')}>前往制度关系</Button>} /></>}
+            <Form.Item name="change_reason" label={workingRevision.source_type === 'EXPIRY' ? '失效说明' : '修订原因'} rules={workingRevision.source_type === 'EXPIRY' ? [{ required: true, message: '请填写失效说明' }] : undefined}><Input.TextArea rows={2} /></Form.Item>
+            {workingRevision.source_type === 'EXPIRY' && <Alert showIcon type="info" message="失效：因有效期届满等客观条件终止效力" description="请使用日期控件确认失效日期并填写失效说明；审核通过后仍需构建全量 IndexRun，并在 Alias 切换成功后正式生效。" />}
+            {(workingRevision.source_type === 'REPEAL' || workingRevision.status === 'repealed') && <><div className="metadata-form-grid"><Form.Item name="repeal_date" label="废止日期" rules={workingRevision.source_type === 'REPEAL' ? [{ required: true, message: '请填写废止日期' }] : undefined}><Input type="date" /></Form.Item><Form.Item name="repeal_reason" label="废止原因" rules={workingRevision.source_type === 'REPEAL' ? [{ required: true, message: '请填写废止原因' }] : undefined}><Input /></Form.Item><Form.Item name="repeal_evidence" label="废止依据" rules={workingRevision.source_type === 'REPEAL' ? [{ required: true, message: '请填写废止依据' }] : undefined}><Input /></Form.Item></div><Alert showIcon type="info" message="废止：由管理机关主动终止制度效力" description="本页确认该文件版本的废止元数据；如果由另一份制度废止，还应在制度关系页建立REPEALS关系并绑定原文证据。" action={<Button size="small" onClick={() => navigate('/admin/relations')}>前往制度关系</Button>} /></>}
           </Form>
-          <Space>{current.lifecycle_status === 'DRAFT' && <><Button onClick={() => void save()}>保存草稿</Button><Button type="primary" loading={actionLoading} onClick={() => void submit()}>保存并提交审核</Button></>}{current.lifecycle_status === 'PENDING_REVIEW' && <><Button type="primary" icon={<UiIcon icon={CheckOutlined} />} onClick={() => void review(true)}>审核通过</Button><Button danger onClick={() => void review(false)}>驳回</Button></>}</Space>
+          <Space>{workingRevision.lifecycle_status === 'DRAFT' && <>{pendingDraftType && <Button onClick={() => { setPendingDraftType(null); setPendingDraftDirty(false); }}>退出编辑</Button>}<Button onClick={() => void save()}>保存草稿</Button><Button type="primary" loading={actionLoading} onClick={() => void submit()}>保存并提交审核</Button></>}{workingRevision.lifecycle_status === 'PENDING_REVIEW' && <><Button type="primary" icon={<UiIcon icon={CheckOutlined} />} onClick={() => void review(true)}>审核通过</Button><Button danger onClick={() => void review(false)}>驳回</Button></>}</Space>
         </Card></section>
-        <aside><Card size="small" title="解析识别候选"><List size="small" dataSource={Object.entries(candidateGroups)} renderItem={([field, items]) => <List.Item><div><strong>{fieldLabels[field] ?? field}</strong>{items.slice(0, 3).map((item) => <p key={item.id}><Button type="link" size="small" disabled={current.lifecycle_status !== 'DRAFT'} onClick={() => form.setFieldValue(field as keyof MetadataRevision, item.normalized_value || item.raw_value)}>{item.normalized_value || item.raw_value}</Button><small>置信度 {(item.confidence * 100).toFixed(0)}% · 第{item.page_start ?? '-'}页</small></p>)}</div></List.Item>} /></Card><Card size="small" title="修订历史"><List size="small" dataSource={detail.revisions} renderItem={(item) => <List.Item><Space><Tag>{item.revision_no}</Tag><span>{lifecycleLabels[item.lifecycle_status] ?? item.lifecycle_status}</span></Space></List.Item>} /></Card></aside>
+        <aside><Card size="small" title="解析识别候选"><List size="small" dataSource={Object.entries(candidateGroups)} renderItem={([field, items]) => <List.Item className="metadata-candidate-group"><div><strong>{candidateFieldLabels[field] ?? field}</strong>{items.slice(0, 3).map((item) => <div className="metadata-candidate-item" key={item.id}><Button block type="link" size="small" disabled={workingRevision.lifecycle_status !== 'DRAFT' || !(field in fieldLabels)} onClick={() => { form.setFieldValue(field as keyof MetadataRevision, item.normalized_value || item.raw_value); if (pendingDraftType) setPendingDraftDirty(true); }}>{item.normalized_value || item.raw_value}</Button><small>置信度 {(item.confidence * 100).toFixed(0)}% · {item.page_start ? `第${item.page_start}页` : '未定位页码'}</small></div>)}</div></List.Item>} /></Card><Card size="small" title="修订历史"><List size="small" dataSource={detail.revisions} renderItem={(item) => <List.Item><Space><Tag>{item.revision_no}</Tag><span>{lifecycleLabels[item.lifecycle_status] ?? item.lifecycle_status}</span></Space></List.Item>} /></Card></aside>
       </div>}
     </Drawer>
     <Modal title="设置制度系列" open={seriesOpen} onCancel={() => setSeriesOpen(false)} onOk={() => void saveSeries()}><Form form={seriesForm} layout="vertical"><Form.Item name="series_id" label="归入既有制度系列"><Select allowClear showSearch optionFilterProp="label" options={series.map((item) => ({ value: item.id, label: `${item.canonical_title}（${item.document_count}个版本）` }))} /></Form.Item><Form.Item name="canonical_title" label="系列标准名称"><Input placeholder="未选择既有系列时将创建新系列" /></Form.Item></Form></Modal>

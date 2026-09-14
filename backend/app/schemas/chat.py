@@ -1,7 +1,7 @@
 """文件说明：定义平台会话、公开回答、Citation、Conflict和反馈API契约。"""
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -71,6 +71,13 @@ class ChatMessageResponse(BaseModel):
     session_id: str
     role: Literal["user", "assistant"]
     query_scope: Literal["CURRENT", "HISTORICAL"]
+    document_selection_mode: Literal["ALL", "SELECTED"]
+    selected_document_ids: list[int]
+    resolved_document_scope_mode: Literal["ALL", "SELECTED"]
+    query_index_run_id: int | None
+    access_scope_version: str
+    access_scope_hash: str
+    access_scope_count: int
     content: str
     answer_status: Literal["ANSWER", "INSUFFICIENT_EVIDENCE", "CONFLICT"] | None
     request_id: str
@@ -87,14 +94,52 @@ class ChatMessageListResponse(BaseModel):
     items: list[ChatMessageResponse]
 
 
+class AllDocumentSelection(BaseModel):
+    """用户明确选择全部可访问制度。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["ALL"] = "ALL"
+
+
+class SelectedDocumentSelection(BaseModel):
+    """用户明确选择一至二十个具体制度版本。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["SELECTED"]
+    document_ids: list[int] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def normalize_ids(self) -> "SelectedDocumentSelection":
+        normalized = sorted(set(self.document_ids))
+        if any(document_id <= 0 for document_id in normalized):
+            raise ValueError("document_ids必须是正整数")
+        self.document_ids = normalized
+        return self
+
+
+DocumentSelection = Annotated[
+    AllDocumentSelection | SelectedDocumentSelection,
+    Field(discriminator="mode"),
+]
+
+
 class ChatMessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
     query_scope: Literal["CURRENT", "HISTORICAL"] = "CURRENT"
+    document_selection: DocumentSelection = Field(default_factory=AllDocumentSelection)
 
 
 class ChatTurnResponse(BaseModel):
     user_message: ChatMessageResponse
     assistant_message: ChatMessageResponse
+
+
+class QueryScopeCapabilitiesResponse(BaseModel):
+    active_index_run_id: int
+    current_document_count: int
+    historical_document_count: int
 
 
 FeedbackRating = Literal["up", "down"]

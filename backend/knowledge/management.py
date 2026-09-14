@@ -12,6 +12,7 @@ from knowledge.indexing.database import IndexDatabase
 from knowledge.indexing.embedding import OpenAIEmbeddingClient
 from knowledge.indexing.indexer import PolicyIndexer
 from knowledge.indexing.qdrant_store import QdrantVectorStore
+from knowledge.metadata_rules import status_transition_error
 from knowledge.parser.database import ParserDatabase
 from knowledge.parser.pipeline import ParserConfig, PolicyParserPipeline
 from knowledge.parser.review import ReviewService as ParseReviewService
@@ -236,7 +237,8 @@ class KnowledgeManagementService:
                 """
                 SELECT d.id AS document_id,d.active_parse_run_id,d.active_chunk_run_id,
                        mr.id AS metadata_revision_id,mr.parse_run_id AS metadata_parse_run_id,
-                       mr.lifecycle_status,cr.parse_run_id AS chunk_parse_run_id,
+                       mr.lifecycle_status,mr.source_type AS metadata_source_type,
+                       mr.status AS metadata_document_status,cr.parse_run_id AS chunk_parse_run_id,
                        cr.status AS chunk_status,cr.review_status AS chunk_review_status
                 FROM policy_document d
                 JOIN document_metadata_revision mr ON mr.id=? AND mr.document_id=d.id
@@ -263,6 +265,11 @@ class KnowledgeManagementService:
                 raise ValueError(f"制度 {document_id} 的ParseRun、ChunkRun和元数据版本不一致")
             if row["chunk_status"] != "succeeded" or row["chunk_review_status"] != "approved":
                 raise ValueError(f"制度 {document_id} 的active ChunkRun尚未审核通过")
+            transition_error = status_transition_error(
+                str(row["metadata_source_type"]), row["metadata_document_status"]
+            )
+            if transition_error:
+                raise ValueError(f"制度 {document_id} 的元数据生命周期不一致：{transition_error}")
             return {
                 "document_id": int(row["document_id"]),
                 "parse_run_id": int(row["active_parse_run_id"]),

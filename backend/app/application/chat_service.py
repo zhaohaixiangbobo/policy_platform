@@ -17,7 +17,9 @@ from app.infrastructure.db.models import (
     utc_now,
 )
 from knowledge.contracts import QueryResponse as RagQueryResponse
-from app.infrastructure.rag_api_client import RagApiClient, RagApiClientError
+from knowledge.service import KnowledgeService, KnowledgeServiceError
+from app.application.auth_service import Principal
+from app.application.query_scope_service import QueryScopeResolver, ResolvedQueryScope
 from app.schemas.chat import (
     ChatMessageResponse,
     ChatSessionSummary,
@@ -27,6 +29,7 @@ from app.schemas.chat import (
     ConflictSnapshot,
     MessageFeedbackCreate,
     MessageFeedbackResponse,
+    QueryScopeCapabilitiesResponse,
     QualityGateSummary,
 )
 
@@ -66,6 +69,15 @@ def message_response(message: ChatMessage) -> ChatMessageResponse:
         session_id=message.session_id,
         role=message.role,
         query_scope=message.query_scope,
+        document_selection_mode=message.document_selection_mode,
+        selected_document_ids=[
+            int(value) for value in json.loads(message.selected_document_ids_json or "[]")
+        ],
+        resolved_document_scope_mode=message.resolved_document_scope_mode,
+        query_index_run_id=message.query_index_run_id,
+        access_scope_version=message.access_scope_version,
+        access_scope_hash=message.access_scope_hash,
+        access_scope_count=message.access_scope_count,
         content=message.content,
         answer_status=message.answer_status,
         request_id=message.request_id,
@@ -80,12 +92,28 @@ def message_response(message: ChatMessage) -> ChatMessageResponse:
 
 
 class ChatService:
-    """编排Platform持久化和唯一RAG公开查询调用。"""
+    """编排Platform持久化和唯一进程内RAG查询调用。"""
 
-    def __init__(self, session: Session, client: RagApiClient, actor_user_id: str) -> None:
+    def __init__(
+        self,
+        session: Session,
+        client: KnowledgeService,
+        principal: Principal,
+        query_scope_resolver: QueryScopeResolver,
+    ) -> None:
         self._session = session
         self._client = client
-        self._actor_user_id = actor_user_id
+        self._principal = principal
+        self._actor_user_id = principal.user_id
+        self._query_scope_resolver = query_scope_resolver
+
+    def query_scope_capabilities(self) -> QueryScopeCapabilitiesResponse:
+        capabilities = self._query_scope_resolver.capabilities(self._principal)
+        return QueryScopeCapabilitiesResponse(
+            active_index_run_id=capabilities.index_run_id,
+            current_document_count=capabilities.current_document_count,
+            historical_document_count=capabilities.historical_document_count,
+        )
 
     def list_sessions(self) -> list[ChatSessionSummary]:
         sessions = self._session.scalars(
@@ -128,13 +156,26 @@ class ChatService:
         return [message_response(item) for item in messages]
 
     async def send_message(
-        self, session_id: str, content: str, request_id: str, query_scope: str = "CURRENT"
+        self,
+        session_id: str,
+        content: str,
+        request_id: str,
+        query_scope: str = "CURRENT",
+        document_selection_mode: str = "ALL",
+        selected_document_ids: tuple[int, ...] = (),
     ) -> ChatTurnResponse:
         chat_session = self._active_session(session_id)
+        resolved_scope = self._query_scope_resolver.resolve(
+            self._principal,
+            selection_mode=document_selection_mode,  # type: ignore[arg-type]
+            selected_document_ids=selected_document_ids,
+            query_scope=query_scope,  # type: ignore[arg-type]
+        )
         user_message = ChatMessage(
             session_id=session_id,
             role="user",
             query_scope=query_scope,
+            **self._scope_fields(resolved_scope, selected_document_ids),
             content=content.strip(),
             request_id=request_id,
         )
@@ -145,9 +186,17 @@ class ChatService:
         self._session.commit()
 
         try:
-            response = await self._client.query(content.strip(), request_id, query_scope)
-            self._validate_citation_scope(response, query_scope, request_id)
-        except RagApiClientError as exc:
+            response = await self._client.query(
+                content.strip(),
+                request_id,
+                query_scope,
+                resolved_scope.rag_document_scope_mode,
+                resolved_scope.document_ids
+                if resolved_scope.rag_document_scope_mode == "SELECTED"
+                else (),
+            )
+            self._validate_citation_scope(response, resolved_scope, request_id)
+        except KnowledgeServiceError as exc:
             # 失败问题由前端保留为可重试草稿，平台库不留下无法判断状态的孤立用户消息。
             self._session.execute(delete(ChatMessage).where(ChatMessage.id == user_message.id))
             self._session.add(
@@ -165,7 +214,14 @@ class ChatService:
             self._session.commit()
             raise
 
-        assistant = self._build_assistant_message(session_id, request_id, query_scope, response)
+        assistant = self._build_assistant_message(
+            session_id,
+            request_id,
+            query_scope,
+            response,
+            resolved_scope,
+            selected_document_ids,
+        )
         self._session.add(assistant)
         self._session.flush()
         self._session.add(
@@ -272,12 +328,18 @@ class ChatService:
 
     @staticmethod
     def _build_assistant_message(
-        session_id: str, request_id: str, query_scope: str, response: RagQueryResponse
+        session_id: str,
+        request_id: str,
+        query_scope: str,
+        response: RagQueryResponse,
+        resolved_scope: ResolvedQueryScope,
+        selected_document_ids: tuple[int, ...],
     ) -> ChatMessage:
         message = ChatMessage(
             session_id=session_id,
             role="assistant",
             query_scope=query_scope,
+            **ChatService._scope_fields(resolved_scope, selected_document_ids),
             content=response.answer,
             answer_status=response.status,
             request_id=request_id,
@@ -321,25 +383,82 @@ class ChatService:
 
     @staticmethod
     def _validate_citation_scope(
-        response: RagQueryResponse, query_scope: str, request_id: str
+        response: RagQueryResponse,
+        resolved_scope: ResolvedQueryScope,
+        request_id: str,
     ) -> None:
         """对公开 Citation 再做边界校验，避免上游错误状态进入 Platform 历史。"""
 
+        response_index_run_ids = {
+            response.retrieval.index_run_id,
+            *(item.index_run_id for item in response.citations),
+        }
+        if response_index_run_ids != {resolved_scope.index_run_id}:
+            raise KnowledgeServiceError(
+                code="RAG_INDEX_SCOPE_MISMATCH",
+                message="查询期间正式索引已切换，请按原问题重试",
+                request_id=request_id,
+                retryable=True,
+                http_status=503,
+            )
         normalized = {
             "effective": "effective", "现行有效": "effective",
             "repealed": "repealed", "已废止": "repealed",
             "expired": "expired", "已失效": "expired",
         }
-        allowed = {"effective"} if query_scope == "CURRENT" else {"repealed", "expired"}
-        invalid = [
+        allowed_statuses = (
+            {"effective"}
+            if resolved_scope.query_scope == "CURRENT"
+            else {"repealed", "expired"}
+        )
+        invalid_status = [
             item.label for item in response.citations
-            if normalized.get(item.document_status.strip().lower(), item.document_status.strip().lower()) not in allowed
+            if normalized.get(
+                item.document_status.strip().lower(),
+                item.document_status.strip().lower(),
+            ) not in allowed_statuses
         ]
-        if invalid:
-            raise RagApiClientError(
+        if invalid_status:
+            raise KnowledgeServiceError(
                 code="RAG_SCOPE_MISMATCH",
                 message="制度知识服务返回了不符合查询范围的引用",
                 request_id=request_id,
                 retryable=False,
                 http_status=502,
             )
+        allowed_document_ids = set(resolved_scope.document_ids)
+        invalid_documents = [
+            item.label
+            for item in response.citations
+            if item.document_id not in allowed_document_ids
+        ]
+        if invalid_documents:
+            raise KnowledgeServiceError(
+                code="RAG_DOCUMENT_SCOPE_MISMATCH",
+                message="制度知识服务返回了超出授权范围的引用",
+                request_id=request_id,
+                retryable=False,
+                http_status=502,
+            )
+
+    @staticmethod
+    def _scope_fields(
+        resolved_scope: ResolvedQueryScope,
+        selected_document_ids: tuple[int, ...],
+    ) -> dict[str, object]:
+        """用户选择和Platform最终范围分别持久化，避免把ALL误写成空集合。"""
+
+        selected = (
+            sorted(set(int(value) for value in selected_document_ids))
+            if resolved_scope.user_selection_mode == "SELECTED"
+            else []
+        )
+        return {
+            "document_selection_mode": resolved_scope.user_selection_mode,
+            "selected_document_ids_json": json.dumps(selected),
+            "resolved_document_scope_mode": resolved_scope.rag_document_scope_mode,
+            "query_index_run_id": resolved_scope.index_run_id,
+            "access_scope_version": resolved_scope.access_policy_version,
+            "access_scope_hash": resolved_scope.scope_hash,
+            "access_scope_count": len(resolved_scope.document_ids),
+        }

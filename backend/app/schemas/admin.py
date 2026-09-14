@@ -34,6 +34,8 @@ class IngestionJobResponse(BaseModel):
 class JobListResponse(BaseModel):
     items: list[IngestionJobResponse]
     total: int
+    page: int
+    page_size: Literal[10]
     counts: dict[str, int]
 
 
@@ -51,7 +53,7 @@ class BatchCreateRequest(BaseModel):
 
 
 class MetadataDraftCreateRequest(BaseModel):
-    request_type: Literal["CORRECTION", "REPEAL"]
+    request_type: Literal["CORRECTION", "REPEAL", "EXPIRY"]
     change_reason: str | None = Field(default=None, max_length=2000)
 
 

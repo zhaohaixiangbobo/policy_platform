@@ -11,7 +11,7 @@ import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Sequence
 
 from .config import KnowledgePaths
 from .indexing.config import IndexConfig
@@ -66,6 +66,22 @@ class CatalogNode:
     page_start: int | None
     page_end: int | None
     table_structure: dict[str, Any] | None
+
+
+@dataclass(frozen=True, slots=True)
+class QueryableDocument:
+    """当前 active IndexRun 中可供查询范围解析使用的具体制度版本。"""
+
+    id: int
+    status: str
+
+
+@dataclass(frozen=True, slots=True)
+class QueryableIndexSnapshot:
+    """当前正式索引的制度范围快照。"""
+
+    index_run_id: int
+    documents: tuple[QueryableDocument, ...]
 
 
 class KnowledgeCatalogService:
@@ -130,6 +146,8 @@ class KnowledgeCatalogService:
         sort_order: str,
         page: int,
         page_size: int,
+        query_scope: str | None = None,
+        allowed_document_ids: Sequence[int] | None = None,
     ) -> tuple[list[CatalogDocument], int]:
         conditions = ["ip.profile_name=?", "ir.status='succeeded'", "ir.activation_status='active'"]
         parameters: list[Any] = [self.profile_name]
@@ -156,12 +174,26 @@ class KnowledgeCatalogService:
                 parameters.append(
                     STATUS_STORAGE_NAMES.get(value, value) if column == "m.status" else value
                 )
+        if query_scope == "CURRENT":
+            conditions.append("m.status='effective'")
+        elif query_scope == "HISTORICAL":
+            conditions.append("m.status IN ('repealed','expired')")
         if publish_date_from:
             conditions.append("m.publish_date>=?")
             parameters.append(publish_date_from)
         if publish_date_to:
             conditions.append("m.publish_date<=?")
             parameters.append(publish_date_to)
+        if allowed_document_ids is not None:
+            normalized_ids = sorted(set(int(value) for value in allowed_document_ids))
+            if normalized_ids:
+                # 使用JSON数组作为单参数，避免未来权限集合超过SQLite变量数量上限。
+                conditions.append(
+                    "d.id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))"
+                )
+                parameters.append(json.dumps(normalized_ids, separators=(",", ":")))
+            else:
+                conditions.append("1=0")
 
         where_sql = " AND ".join(conditions)
         sort_column = self._SORT_COLUMNS[sort_by]
@@ -197,16 +229,52 @@ class KnowledgeCatalogService:
             ).fetchall()
         return [self._document(row) for row in rows], total
 
-    def list_facets(self) -> dict[str, list[str]]:
+    def list_facets(
+        self, allowed_document_ids: Sequence[int] | None = None
+    ) -> dict[str, list[str]]:
         with self._connection() as connection:
             return {
                 "statuses": [
                     STATUS_DISPLAY_NAMES.get(value, value)
-                    for value in self._distinct(connection, "status")
+                    for value in self._distinct(connection, "status", allowed_document_ids)
                 ],
-                "issuers": self._distinct(connection, "issuing_org"),
-                "departments": self._distinct(connection, "owner_department"),
+                "issuers": self._distinct(connection, "issuing_org", allowed_document_ids),
+                "departments": self._distinct(connection, "owner_department", allowed_document_ids),
             }
+
+    def queryable_index_snapshot(self) -> QueryableIndexSnapshot:
+        """返回 active IndexRun 与其中每个具体制度版本的冻结状态。"""
+
+        with self._connection() as connection:
+            profile = connection.execute(
+                """
+                SELECT ip.active_index_run_id
+                FROM index_profile ip
+                JOIN index_run ir ON ir.id=ip.active_index_run_id
+                WHERE ip.profile_name=?
+                  AND ir.status='succeeded' AND ir.activation_status='active'
+                """,
+                (self.profile_name,),
+            ).fetchone()
+            if profile is None or profile["active_index_run_id"] is None:
+                raise RuntimeError("当前没有正式可查询的 active IndexRun")
+            rows = connection.execute(
+                """
+                SELECT src.document_id,m.status
+                FROM index_run_source src
+                JOIN document_metadata_revision m ON m.id=src.metadata_revision_id
+                WHERE src.index_run_id=?
+                ORDER BY src.document_id
+                """,
+                (int(profile["active_index_run_id"]),),
+            ).fetchall()
+        return QueryableIndexSnapshot(
+            index_run_id=int(profile["active_index_run_id"]),
+            documents=tuple(
+                QueryableDocument(id=int(row["document_id"]), status=str(row["status"]))
+                for row in rows
+            ),
+        )
 
     def get_document(self, document_id: int) -> CatalogDocument:
         with self._connection() as connection:
@@ -328,7 +396,24 @@ class KnowledgeCatalogService:
             updated_at=str(row["updated_at"]),
         )
 
-    def _distinct(self, connection: sqlite3.Connection, column: str) -> list[str]:
+    def _distinct(
+        self,
+        connection: sqlite3.Connection,
+        column: str,
+        allowed_document_ids: Sequence[int] | None = None,
+    ) -> list[str]:
+        access_sql = ""
+        parameters: list[Any] = [self.profile_name]
+        if allowed_document_ids is not None:
+            normalized_ids = sorted(set(int(value) for value in allowed_document_ids))
+            if normalized_ids:
+                access_sql = (
+                    " AND d.id IN "
+                    "(SELECT CAST(value AS INTEGER) FROM json_each(?))"
+                )
+                parameters.append(json.dumps(normalized_ids, separators=(",", ":")))
+            else:
+                access_sql = " AND 1=0"
         rows = connection.execute(
             f"""
             SELECT DISTINCT m.{column}
@@ -339,9 +424,10 @@ class KnowledgeCatalogService:
             JOIN document_metadata_revision m ON m.id=src.metadata_revision_id
             WHERE ir.status='succeeded' AND ir.activation_status='active'
               AND m.{column} IS NOT NULL AND m.{column}!=''
+              {access_sql}
             ORDER BY m.{column}
             """,
-            (self.profile_name,),
+            parameters,
         ).fetchall()
         return [str(row[0]) for row in rows]
 

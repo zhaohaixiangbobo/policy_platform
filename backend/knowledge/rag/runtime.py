@@ -1,6 +1,6 @@
 """文件说明：集中构建和关闭正式RAG运行时资源。
 
-命令行、压测器和后续Windows测试版API复用同一构造逻辑，保证Dense Top20、Rerank Top8、
+命令行、压测器和Platform进程内KnowledgeService复用同一构造逻辑，保证Dense Top20、Rerank Top8、
 Context、Generator与Prompt契约一致。运行时只执行查询，不修改SQLite、Qdrant或运行指针。
 """
 

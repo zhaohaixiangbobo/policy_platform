@@ -727,5 +727,5 @@ P2-4/P2-5：
 - Platform使用独立的 `policy_platform_dense` profile与 `policy_platform_dense_active` alias；
 - 原RAG的 `policy_dense_active` 保持原目标，`D:\2-code\rag`未修改；
 - 身份权限、任务中心、真实审核、制度关系、人工流程和证据绑定已经实现；
-- P2-6中的4A实接、Chrome 89实机、8010暖态容量与SLA仍按条件推进；
+- P2-6中的4A实接、Chrome 89实机、进程内RAG暖态容量与SLA仍按条件推进；
 - 当前事实和验证结果以 `docs/PHASE2_IMPLEMENTATION_STATUS_2026-08-30.md` 为准。

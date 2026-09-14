@@ -4,6 +4,9 @@
 >
 > **生成日期**：2026-09-03
 >
+> **运行边界更新（2026-09-14）**：ADR-0004 已将 Web 问答恢复为 Platform 进程内
+> `KnowledgeService → RagRuntime`。本文的入库、审核和发布说明仍然有效，问答章节已按当前实现更新。
+>
 > **行号说明**：文中的行号基于本文生成时的代码状态，仅用于快速定位。代码改动后行号会漂移，**函数名和文件路径是更稳定的锚点**，定位不到时请按函数名搜索。
 
 ---
@@ -57,12 +60,12 @@ graph TD
 3. **下一层只消费上一层的 active**。`PolicyChunker` 只处理 `active_parse_run_id` 的节点；`PolicyIndexer` 只冻结 `active_chunk_run_id` 的 chunk。
 4. **IndexRun 是最终闸门**。一份制度即使解析、切块全部成功，只要没被纳入 active IndexRun 的 `index_run_source` 表，Platform 侧就**完全查不到它**（见 `backend/knowledge/read_service.py:233`、`:277`、`:314` 的 `JOIN index_run_source`）。
 
-### 0.4 问答链路以 ADR-0003 为准
+### 0.4 问答链路以 ADR-0004 为准
 
-- Platform 的 `ChatService` 只通过 `RagApiClient` 调用独立 8010 的 `POST /v1/rag/query`。
-- 8010 由 `D:\2-code\rag\run_rag_api.py` 提供；Platform 不直接访问该工程内部SQLite、Qdrant或模型服务。
-- `backend/knowledge/rag/` 是迁移遗留的离线兼容代码，不参与Web问答装配。
-- ADR-0002 的“进程内问答”条款已被 ADR-0003 明确取代。
+- Platform 的 `ChatService` 只通过进程内 `KnowledgeService` 调用 `RagRuntime`。
+- 原 `D:\2-code\rag` 与 8010 已退出当前运行链路；应用层不得绕过 `KnowledgeService` 直接访问知识SQLite、Qdrant客户端或模型客户端。
+- `backend/knowledge/rag/` 是Web问答与CLI共用的RAG实现，由 `KnowledgeService` 统一装配。
+- ADR-0004 已取代 ADR-0003 的独立HTTP边界，并确认 ADR-0002 的进程内方向。
 
 ---
 
@@ -96,7 +99,7 @@ flowchart TD
     PUB --> QA["问答可用"]
     QA --> Q1["前端 ChatPage"]
     Q1 --> Q2["Platform ChatService"]
-    Q2 -->|HTTP 8010| Q3["RAG 引擎<br/>检索→重排→生成→引用校验"]
+    Q2 -->|进程内 KnowledgeService| Q3["RAG Runtime<br/>检索→重排→生成→引用校验"]
 ```
 
 **四个人工卡点**（流程不会自动越过）：解析复核 → 元数据审核 → 切块复核 → 发布确认。
@@ -854,14 +857,14 @@ alias 未指向该 collection                      →  activation_status 回退
 ChatPage.tsx（frontend/src/pages/ChatPage.tsx）
   └─ POST /api/v1/chat/sessions/{session_id}/messages   （chat.py:72-86 send_message）
        └─ ChatService.send_message（chat_service.py:130-187）
-            └─ RagApiClient.query（rag_api_client.py:59）→ POST http://127.0.0.1:8010/v1/rag/query
+             └─ KnowledgeService.query（knowledge/service.py）→ 专用线程中的 RagRuntime.query
 ```
 
 `ChatService.send_message` 六步：
 
 1. 校验会话归属当前用户；
 2. 先把用户消息写进 `chat_message`（role='user'）并 flush 拿到 ID；
-3. 调 `RagApiClient.query(content, query_scope)`（`query_scope` 只允许 `CURRENT` / `HISTORICAL`，默认 `CURRENT`）；
+3. 由 `QueryScopeResolver` 计算可访问制度交集，再调 `KnowledgeService.query(...)`（`query_scope` 只允许 `CURRENT` / `HISTORICAL`，默认 `CURRENT`）；
 4. 成功：写 assistant 消息 + `message_citation` + `message_conflict` / `conflict_position` 快照；
 5. 更新会话 `updated_at`、`message_count`；
 6. 写 `platform_audit_log`。
@@ -869,7 +872,7 @@ ChatPage.tsx（frontend/src/pages/ChatPage.tsx）
 **失败路径值得单独记住**（`chat_service.py:150-166`）：
 
 ```python
-except RagApiClientError as exc:
+except KnowledgeServiceError as exc:
     # 失败问题由前端保留为可重试草稿，平台库不留下无法判断状态的孤立用户消息。
     self._session.execute(delete(ChatMessage).where(ChatMessage.id == user_message.id))
     self._session.add(PlatformAuditLog(..., status="failed", error_code=exc.code))
@@ -879,13 +882,13 @@ except RagApiClientError as exc:
 
 即 **RAG 调用失败会把刚写入的用户消息删掉**，只在审计日志留痕。前端负责把这条问题保留成本地草稿供重试。设计意图：不让 `chat_message` 里出现「有问无答、状态不明」的悬挂记录。
 
-> 8010 服务由独立工程 `D:\2-code\rag\run_rag_api.py` 提供，这是 ADR-0003 冻结的正式边界。
-> 不启动它，Web问答会在 `RagApiClient` 处返回稳定的不可用错误；制度管理与目录浏览仍由Platform独立工作。
+> 当前正式边界由 ADR-0004 冻结：Platform 不启动或调用 8010。首次 Web 问答时，
+> `KnowledgeService` 才惰性初始化Runtime；外部Qdrant或模型服务不可用时返回稳定错误。
 
-### 12.2 离线兼容 RAG Pipeline（`knowledge/rag/pipeline.py`）
+### 12.2 统一 RAG Pipeline（`knowledge/rag/pipeline.py`）
 
-该代码供离线CLI和历史测试使用，不是Platform Web问答路径。在线契约和行为以独立8010的
-`rag_api_v1_1`实现为准。
+该Pipeline同时由离线CLI和Platform进程内Runtime复用。应用层只接收经
+`public_query_response` 校验的 `rag_api_v1_1` 公开结果。
 
 ```mermaid
 sequenceDiagram
@@ -1319,12 +1322,12 @@ $py = "D:\3-anaconda\envs\py312\python.exe"
 & $py -m knowledge.cli index --publish
 & $py -m knowledge.cli index --activate-run 3        # 回滚到指定 IndexRun
 
-# 阶段八：问答（通过独立8010公开API）
+# 阶段八：问答（CLI与Web复用进程内Runtime）
 & $py -m knowledge.cli query "加班费怎么算？"
 & $py -m knowledge.cli query "加班费怎么算？" --debug
 ```
 
-> `knowledge.cli query` 仅是离线兼容工具；Web问答验收必须验证HTTP 8010公开契约，不能用CLI结果替代。
+> `knowledge.cli query` 是离线诊断入口；Web问答验收仍需通过 Platform 8020 的聊天接口，验证权限范围、持久化与Citation二次校验。
 
 ### 16.4 两个数据库的快速自检
 
@@ -1383,8 +1386,6 @@ cd d:\2-code\policy-platform; D:\3-anaconda\envs\py312\python.exe scripts\export
 | `PLATFORM_PORT`                            | `8020`                             | API 端口                           |
 | `PLATFORM_DATABASE_URL`                    | `sqlite:///<项目>/var/platform.db` | 平台库                             |
 | `PLATFORM_KNOWLEDGE_DATA_ROOT`             | `<项目>/var/knowledge`             | **知识数据根**，所有相对路径的基准 |
-| `PLATFORM_RAG_API_URL`                     | `http://127.0.0.1:8010`            | 独立RAG公开API地址                 |
-| `PLATFORM_RAG_API_CONNECT_TIMEOUT_SECONDS` | `5.0`                              | 连接超时                           |
 | `PLATFORM_RAG_DIAGNOSTICS_ENABLED`         | `false`                            | 开启后才能拉 debug 字段            |
 | `PLATFORM_SESSION_TTL_HOURS`               | `8`                                | 会话有效期                         |
 | `PLATFORM_COOKIE_SECURE`                   | `false`                            | 上生产（HTTPS）必须改 `true`       |
@@ -1494,10 +1495,10 @@ backend/
 │  │  ├─ publication_service.py      发布请求（1~20 份，L21-24）
 │  │  └─ chat_service.py             问答编排（send_message L130-187）
 │  └─ infrastructure/
-│     ├─ db/models.py                平台库 28 张表
-│     └─ rag_api_client.py           调 8010（L59）
+│     └─ db/models.py                平台库 28 张表
 │
 ├─ knowledge/                        【知识层】制度内容与版本
+│  ├─ service.py                     Web问答进程内边界与专用查询线程
 │  ├─ cli.py                         七个子命令（调试利器）
 │  ├─ management.py                  Worker 调的编排层
 │  ├─ config.py                      KnowledgePaths（目录约定）
