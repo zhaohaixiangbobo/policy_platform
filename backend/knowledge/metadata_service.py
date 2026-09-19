@@ -376,6 +376,41 @@ class KnowledgeMetadataService:
                 )
         return self._revision(revision_id)
 
+    def withdraw(self, document_id: int, revision_id: int) -> dict[str, Any]:
+        """撤回尚未发布的人工修订，并恢复稳定的已批准指针。"""
+
+        revision = self._owned_revision(document_id, revision_id)
+        lifecycle_status = str(revision.get("lifecycle_status") or "")
+        if lifecycle_status == "WITHDRAWN":
+            return revision
+        if lifecycle_status not in {"DRAFT", "PENDING_REVIEW", "APPROVED"}:
+            raise MetadataConflictError("只有尚未发布的元数据修订可以撤回")
+        if str(revision.get("source_type") or "") == "PARSE_EXTRACTED":
+            raise MetadataConflictError("首次入库元数据不能撤回，请在审核流程中驳回")
+
+        document = self._document(document_id)
+        approved_id = document.get("approved_metadata_revision_id")
+        fallback_approved_id = document.get("active_metadata_revision_id")
+        now = utc_now()
+        with self.db.transaction():
+            self.db.connection.execute(
+                """
+                UPDATE document_metadata_revision
+                SET lifecycle_status='WITHDRAWN', updated_at=?
+                WHERE id=?
+                """,
+                (now, revision_id),
+            )
+            if approved_id is not None and int(approved_id) == revision_id:
+                self.db.connection.execute(
+                    """
+                    UPDATE policy_document
+                    SET approved_metadata_revision_id=?, updated_at=? WHERE id=?
+                    """,
+                    (fallback_approved_id, now, document_id),
+                )
+        return self._revision(revision_id)
+
     @staticmethod
     def _validate_lifecycle_revision(
         revision: dict[str, Any], *, require_details: bool

@@ -23,10 +23,22 @@ SYSTEM_PROMPT = """你是企业制度知识库问答助手。请严格遵守以�
 8. 仅返回符合给定JSON Schema的JSON对象，不输出Markdown代码块、解释或reasoning。
 9. 返回前执行最后检查：从answer提取所有`[E1]`格式编号，其集合必须与citations数组完全相同。
 
-有效ANSWER示例：
-{"status":"ANSWER","answer":"办理期限为5个工作日。[E1]由人事部门审批。[E2]","citations":["E1","E2"],"conflicts":[],"warnings":[]}
-有效拒答示例：
-{"status":"INSUFFICIENT_EVIDENCE","answer":"现有证据没有给出具体期限，无法确定。","citations":[],"conflicts":[],"warnings":[]}
+10. 在同一次生成中判断answerability：SUFFICIENT为已完整回答本轮问题，PARTIAL为有相关证据但缺条件或覆盖不完整，NONE为没有可支持实质回答的证据。
+11. 有用的条件式答案使用ANSWER+PARTIAL，明确每个分支的适用条件；只找到相关资料而不能形成目标结论可用INSUFFICIENT_EVIDENCE+PARTIAL。不同适用类别不是制度冲突。
+12. reason_code为COMPLETE、MISSING_USER_CONTEXT、EVIDENCE_COVERAGE_GAP、POLICY_LIMIT_ONLY、NO_RELEVANT_EVIDENCE、CONFLICTING_EVIDENCE之一。ANSWER+SUFFICIENT使用COMPLETE；冲突使用CONFLICTING_EVIDENCE；NONE使用NO_RELEVANT_EVIDENCE。
+13. 只有用户能补充的条件缺失才使用MISSING_USER_CONTEXT，并填写missing_fields和一个clarification_question。字段键仅支持competition_category、award_level、recipient_type、department、applicable_date、business_scenario；其他原因使用空数组和null。追问放在独立字段，不在answer末尾重复提问。
+14. 奖励等级与竞赛类别独立，不能把一等奖理解为一类竞赛；保留不超过、税前等原文限定。用户问上限可以充分回答；问实发金额但制度仅给上限，使用PARTIAL/POLICY_LIMIT_ONLY，不要求用户补出制度没有规定的金额。
+15. PARTIAL正文用条件式陈述明确结论边界；事实陈述逐项引用，缺口由reason_code和clarification_question补充说明。CONFLICT只能搭配SUFFICIENT或PARTIAL，ANSWER不能搭配NONE。
+
+以下示例金额与期限仅演示格式，实际数值必须来自本轮证据。
+完整回答：
+{"status":"ANSWER","answerability":"SUFFICIENT","reason_code":"COMPLETE","answer":"办理期限为5个工作日。[E1]","citations":["E1"],"conflicts":[],"warnings":[],"missing_fields":[],"clarification_question":null}
+条件回答：
+{"status":"ANSWER","answerability":"PARTIAL","reason_code":"MISSING_USER_CONTEXT","answer":"若属于甲类，奖励不超过100元；[E1]若属于乙类，奖励不超过50元。[E2]","citations":["E1","E2"],"conflicts":[],"warnings":[],"missing_fields":["competition_category"],"clarification_question":"请提供竞赛类别或竞赛通知中的类别说明。"}
+上限不能确定实发金额：
+{"status":"ANSWER","answerability":"PARTIAL","reason_code":"POLICY_LIMIT_ONLY","answer":"制度仅规定奖励不超过100元，不能据此确定固定实发金额。[E1]","citations":["E1"],"conflicts":[],"warnings":[],"missing_fields":[],"clarification_question":null}
+无依据：
+{"status":"INSUFFICIENT_EVIDENCE","answerability":"NONE","reason_code":"NO_RELEVANT_EVIDENCE","answer":"本次证据未提供所问事项的规定。","citations":[],"conflicts":[],"warnings":[],"missing_fields":[],"clarification_question":null}
 """
 
 
@@ -35,7 +47,7 @@ class PromptContract:
     """稳定Prompt版本与哈希。"""
 
     system_prompt: str = SYSTEM_PROMPT
-    prompt_version: str = "policy_rag_prompt_v3"
+    prompt_version: str = "policy_rag_prompt_v4"
 
     @property
     def prompt_hash(self) -> str:

@@ -292,6 +292,7 @@ def run_publication(session, publication: IndexPublicationRequest, management: K
         )).all())
         for change in changes:
             change.status = "PUBLISHED"
+            change.open_slot = None
         session.commit()
         LOGGER.info(
             "event=alias_switch_completed publication_id=%s index_run_id=%s elapsed_ms=%d",

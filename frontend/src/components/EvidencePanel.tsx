@@ -7,13 +7,14 @@ import {
   FileTextOutlined,
   RightOutlined,
 } from '@ant-design/icons';
-import { Button, Collapse, Empty, Typography } from 'antd';
+import { Button, Collapse, Empty, Tag, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import type { CitationSnapshot } from '../types/chat';
 import { documentPdfUrl } from '../utils/pdf';
 import { UiIcon } from './UiIcon';
+import { documentStatusLabel } from '../utils/documentStatus';
 
 interface EvidencePanelProps {
   citation?: CitationSnapshot | null;
@@ -124,6 +125,7 @@ export function EvidencePanel({
         <section className="evidence-source">
           <Typography.Text strong>来源信息</Typography.Text>
           <dl className="evidence-metadata">
+            <div><dt>制度状态</dt><dd><Tag>{documentStatusLabel(activeCitation.document_status || 'unknown')}</Tag><Typography.Text type="secondary">回答时引用快照的状态</Typography.Text></dd></div>
             <div><dt>制度文号</dt><dd>{activeCitation.document_code ?? '未标注文号'}</dd></div>
             <div><dt>所属章节</dt><dd>{activeCitation.path_text ?? '未标注'}</dd></div>
             <div><dt>页码位置</dt><dd>{pageText(activeCitation)}</dd></div>

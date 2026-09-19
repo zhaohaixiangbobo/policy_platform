@@ -20,7 +20,7 @@ from .generator import GeneratorResponse
 from .models import AnswerStatus
 
 
-QUALITY_GATE_VERSION = "answer_quality_gate_v2"
+QUALITY_GATE_VERSION = "answer_quality_gate_v3"
 SUPPORT_VERIFIER_SCHEMA_VERSION = "support_verifier_schema_v2"
 SUPPORT_VERIFIER_INPUT_VERSION = "support_verifier_input_v2"
 SUPPORT_VERIFIER_MAX_TOKENS = 512
@@ -420,7 +420,7 @@ class AnswerQualityGate:
                     reason_codes=("quality_gate_disabled",),
                 ),
             )
-        if answer.status == AnswerStatus.INSUFFICIENT_EVIDENCE:
+        if answer.answerability == "NONE" and not answer.citations:
             return QualityGateDecision(answer, self._audit(QualityGateStatus.NOT_REQUIRED))
 
         claims, uncovered = self._extract_claims(answer.answer)
@@ -531,6 +531,8 @@ class AnswerQualityGate:
             citations=(),
             conflicts=(),
             warnings=("QUALITY_GATE_DOWNGRADED",),
+            answerability="NONE",
+            reason_code=("ANSWER_VALIDATION_FAILED" if any(code.startswith("answer_parser_") for code in reason_codes) else "SUPPORT_CHECK_FAILED"),
         )
         return QualityGateDecision(
             answer,

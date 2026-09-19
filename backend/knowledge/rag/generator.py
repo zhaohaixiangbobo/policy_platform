@@ -13,6 +13,7 @@ from typing import Any, Callable, Mapping, Protocol, Sequence
 import requests
 
 from .config import GenerationConfig, GeneratorContract
+from ..telemetry import call, timed, event
 
 
 class GeneratorError(RuntimeError):
@@ -93,6 +94,7 @@ class OpenAIGeneratorClient:
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         self.close()
 
+    @timed("generator_total")
     def generate(
         self,
         messages: Sequence[Mapping[str, str]],
@@ -128,7 +130,7 @@ class OpenAIGeneratorClient:
 
         for attempt in range(1, total_attempts + 1):
             try:
-                response = self._session.post(
+                response = call("generator_http", self._session.post,
                     self.endpoint_url,
                     headers=headers,
                     json=request_body,
@@ -155,7 +157,8 @@ class OpenAIGeneratorClient:
                 if attempt >= total_attempts:
                     break
                 self._rebuild_session()
-                time.sleep(self.retry_backoff_seconds * attempt)
+                event("generator_retry", attempt=attempt, error_type=type(exc).__name__)
+                call("generator_backoff", time.sleep, self.retry_backoff_seconds * attempt)
 
         elapsed = time.perf_counter() - started
         raise GeneratorTransportError(

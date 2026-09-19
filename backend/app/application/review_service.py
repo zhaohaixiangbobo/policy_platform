@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.application.ingestion_service import IngestionService
 from app.application.metadata_service import MetadataApplicationService
-from app.infrastructure.db.models import IngestionJob, ReviewIssue, ReviewRecord
+from app.infrastructure.db.models import IngestionJob, MetadataChangeRequest, ReviewIssue, ReviewRecord
 from knowledge.management import KnowledgeManagementService
-from knowledge.metadata_service import KnowledgeMetadataService
+from knowledge.metadata_service import KnowledgeMetadataService, MetadataConflictError
 from knowledge.read_service import KnowledgeReadService
 
 
@@ -193,6 +193,18 @@ class ReviewService:
             if target_type == "PARSE_RUN":
                 if job.parse_run_id is None:
                     raise ReviewConflictError("任务缺少ParseRun ID")
+                existing_change = self.session.scalar(select(MetadataChangeRequest).where(
+                    MetadataChangeRequest.document_id == job.document_id,
+                    MetadataChangeRequest.status.in_(["DRAFT", "PENDING_REVIEW", "APPROVED"]),
+                    or_(
+                        MetadataChangeRequest.job_id.is_(None),
+                        MetadataChangeRequest.job_id != job.id,
+                    ),
+                ))
+                if existing_change is not None:
+                    raise ReviewConflictError(
+                        "制度已有未完成元数据修订，请先完成或撤回后再批准新的ParseRun"
+                    )
                 self.management.approve_parse_run(job.parse_run_id, reviewer_user_id, comment)
                 if job.document_id is None:
                     raise ReviewConflictError("任务缺少Document ID")
@@ -202,14 +214,17 @@ class ReviewService:
                     job.initial_document_status,
                 )
                 with KnowledgeMetadataService(self.management.paths.database_path) as knowledge:
-                    MetadataApplicationService(
-                        self.session, knowledge, self.ingestion
-                    ).register_initial(
-                        job.document_id,
-                        int(revision["id"]),
-                        job.id,
-                        reviewer_user_id,
-                    )
+                    try:
+                        MetadataApplicationService(
+                            self.session, knowledge, self.ingestion
+                        ).register_initial(
+                            job.document_id,
+                            int(revision["id"]),
+                            job.id,
+                            reviewer_user_id,
+                        )
+                    except MetadataConflictError as exc:
+                        raise ReviewConflictError(str(exc)) from exc
             else:
                 if job.chunk_run_id is None:
                     raise ReviewConflictError("任务缺少ChunkRun ID")

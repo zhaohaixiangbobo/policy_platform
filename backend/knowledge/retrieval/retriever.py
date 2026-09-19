@@ -13,6 +13,7 @@ from typing import Any, Protocol, Sequence
 from ..indexing.config import EmbeddingContract
 from ..indexing.database import IndexDatabase
 from ..indexing.qdrant_store import SearchHit
+from ..telemetry import call, timed
 
 
 class QueryEmbeddingClient(Protocol):
@@ -74,6 +75,7 @@ class DenseRetriever:
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         self.close()
 
+    @timed("dense_total")
     def search(
         self,
         query: str,
@@ -90,14 +92,14 @@ class DenseRetriever:
             raise RuntimeError("查询 Embedding 契约与 active IndexRun 不一致")
 
         alias_name = str(context["alias_name"])
-        actual_target = self.vector_store.alias_target(alias_name)
+        actual_target = call("qdrant_alias", self.vector_store.alias_target, alias_name)
         if actual_target != str(context["collection_name"]):
             raise RuntimeError(
                 f"Qdrant alias 与 SQLite active IndexRun 不一致：{actual_target}"
             )
 
         query_input = self.embedding_client.format_query(query)
-        vectors = self.embedding_client.embed([query_input])
+        vectors = call("embedding_total", self.embedding_client.embed, [query_input])
         if len(vectors) != 1 or len(vectors[0]) != self.contract.dimension:
             raise RuntimeError("Query Embedding 返回不符合 active 契约")
         selected = filters or SearchFilters()
@@ -107,7 +109,7 @@ class DenseRetriever:
             confidentiality_levels=selected.confidentiality_levels,
             authority_levels=selected.authority_levels,
         )
-        hits = self.vector_store.search(
+        hits = call("qdrant_search", self.vector_store.search,
             alias_name,
             vector_name=self.contract.vector_name,
             query_vector=vectors[0],
@@ -119,7 +121,7 @@ class DenseRetriever:
             for hit in hits
             if isinstance(hit.payload.get("chunk_id"), int)
         ]
-        chunks = self.db.hydrate_chunks(int(context["id"]), chunk_ids)
+        chunks = call("hydrate_chunks", self.db.hydrate_chunks, int(context["id"]), chunk_ids)
 
         results: list[dict[str, Any]] = []
         for hit in hits:

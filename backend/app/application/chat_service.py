@@ -1,6 +1,7 @@
 """文件说明：实现平台会话、公开RAG回答快照、反馈和候选评测案例业务。"""
 
 import json
+import uuid
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
@@ -19,6 +20,7 @@ from app.infrastructure.db.models import (
 from knowledge.contracts import QueryResponse as RagQueryResponse
 from knowledge.service import KnowledgeService, KnowledgeServiceError
 from app.application.auth_service import Principal
+from app.application.conversation_context import STRATEGY_VERSION, resolve_context
 from app.application.query_scope_service import QueryScopeResolver, ResolvedQueryScope
 from app.schemas.chat import (
     ChatMessageResponse,
@@ -80,6 +82,14 @@ def message_response(message: ChatMessage) -> ChatMessageResponse:
         access_scope_count=message.access_scope_count,
         content=message.content,
         answer_status=message.answer_status,
+        answerability=message.answerability,
+        reason_code=message.reason_code,
+        missing_fields=json.loads(message.missing_fields_json) if message.missing_fields_json is not None else None,
+        clarification_question=message.clarification_question,
+        rewrite_used=message.rewrite_used,
+        retrieval_query=message.retrieval_query,
+        rewrite_strategy_version=message.rewrite_strategy_version,
+        conversation_context=json.loads(message.conversation_context_json) if message.conversation_context_json else None,
         request_id=message.request_id,
         engine_request_id=message.engine_request_id,
         contract_version=message.contract_version,
@@ -171,12 +181,25 @@ class ChatService:
             selected_document_ids=selected_document_ids,
             query_scope=query_scope,  # type: ignore[arg-type]
         )
+        # 只考虑最近的完整一轮；会话所有权已由_active_session验证。
+        recent = self._session.scalars(select(ChatMessage).where(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc()).limit(2)).all()
+        previous = recent[0] if len(recent) == 2 and recent[0].role == "assistant" and recent[1].role == "user" else None
+        question = recent[1] if previous else None
+        message_id = str(uuid.uuid4())
+        retrieval_query, context = resolve_context(content.strip(), message_id, previous, question, resolved_scope, selected_document_ids)
+        rewritten = retrieval_query != content.strip()
         user_message = ChatMessage(
+            id=message_id,
             session_id=session_id,
             role="user",
             query_scope=query_scope,
             **self._scope_fields(resolved_scope, selected_document_ids),
             content=content.strip(),
+            retrieval_query=retrieval_query,
+            rewrite_used=rewritten,
+            rewrite_strategy_version=STRATEGY_VERSION,
+            conversation_context_json=json.dumps(context, ensure_ascii=False),
             request_id=request_id,
         )
         if chat_session.title == "新会话":
@@ -187,7 +210,7 @@ class ChatService:
 
         try:
             response = await self._client.query(
-                content.strip(),
+                retrieval_query,
                 request_id,
                 query_scope,
                 resolved_scope.rag_document_scope_mode,
@@ -196,6 +219,8 @@ class ChatService:
                 else (),
             )
             self._validate_citation_scope(response, resolved_scope, request_id)
+            # 补全发生在Platform，公开provenance记录实际执行事实。
+            response = response.model_copy(update={"provenance": response.provenance.model_copy(update={"rewrite_used": rewritten})})
         except KnowledgeServiceError as exc:
             # 失败问题由前端保留为可重试草稿，平台库不留下无法判断状态的孤立用户消息。
             self._session.execute(delete(ChatMessage).where(ChatMessage.id == user_message.id))
@@ -222,6 +247,9 @@ class ChatService:
             resolved_scope,
             selected_document_ids,
         )
+        assistant.retrieval_query = retrieval_query
+        assistant.rewrite_strategy_version = STRATEGY_VERSION
+        assistant.conversation_context_json = json.dumps(context, ensure_ascii=False)
         self._session.add(assistant)
         self._session.flush()
         self._session.add(
@@ -342,6 +370,10 @@ class ChatService:
             **ChatService._scope_fields(resolved_scope, selected_document_ids),
             content=response.answer,
             answer_status=response.status,
+            answerability=response.answerability,
+            reason_code=response.reason_code,
+            missing_fields_json=json.dumps(response.missing_fields, ensure_ascii=False) if response.missing_fields is not None else None,
+            clarification_question=response.clarification_question,
             request_id=request_id,
             engine_request_id=response.request_id,
             contract_version=response.contract_version,

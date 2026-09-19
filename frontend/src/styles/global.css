@@ -1204,6 +1204,10 @@ body {
 
 .follow-up-prompts {
   margin-top: 14px;
+  padding: 12px 16px;
+  border: 1px solid #dce3ef;
+  border-radius: 12px;
+  background: #f7faff;
 }
 
 .follow-up-prompts .ant-prompts-item,

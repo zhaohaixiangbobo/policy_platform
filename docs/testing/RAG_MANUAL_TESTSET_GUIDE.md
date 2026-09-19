@@ -4,6 +4,45 @@
 
 ## 1. 现有测试资产与阶段用途
 
+### S3最小验证
+
+2026-09-19执行34项相关后端测试和pnpm typecheck通过，0010迁移已在本机应用，OpenAPI已导出。
+
+```powershell
+Set-Location 'D:\2-code\policy-platform\backend'
+& 'D:\3-anaconda\envs\py312\python.exe' -m pytest tests/test_conversation_context.py tests/test_answerability.py tests/test_chat_integration.py -q -p no:cacheprovider
+Set-Location 'D:\2-code\policy-platform'
+pnpm typecheck
+```
+
+真实模型/浏览器待手工验收：提出“行业竞赛一等奖多少钱”，在要求补充类别后回答“一类”，再回答“个人一等奖”；查看补全问题和确认来源。用“改为二类”确认覆盖旧值；“不是一类”不得写成确认一类。切换制度选择、CURRENT/HISTORICAL或新话题后不得继承旧条件。补充卡片输入短回复，无需复述原问题。复杂指代保持独立原问题，通用LLM改写关闭。
+全量、压力和长稳测试未执行，本阶段不需要。
+
+### S2最小验证
+
+2026-09-19已执行23项后端测试、前端类型检查，均通过；本机alembic head为0009_chat_answerability，OpenAPI已导出。
+
+```powershell
+Set-Location 'D:\2-code\policy-platform\backend'
+& 'D:\3-anaconda\envs\py312\python.exe' -m pytest tests/test_answerability.py tests/test_chat_integration.py tests/test_knowledge_service.py -q -p no:cacheprovider
+Set-Location 'D:\2-code\policy-platform'
+pnpm typecheck
+```
+
+尚未执行真实模型和浏览器验收。后端加载新代码后手工检查：省级一等奖应给条件答案和具体类别追问；省级一类个人一等奖上限应保留“不超过”和税前限定；询问实发金额不能把上限当固定金额；无相关资料返回NONE。查看公开回答快照中的新字段和版本，确认旧会话仍可打开。多轮自动补全属于S3，当前只展示追问。
+全量、压力、长稳测试不属于本阶段必要测试，不提供无目标的大规模执行要求。
+
+### S1 回答展示最小手工验收
+
+2026-09-19：S1执行 `pnpm typecheck` 通过，以下浏览器交互步骤尚未执行。无需重新请求模型或修改历史数据。
+
+1. 打开已有“行业省级一等奖”会话，确认依据不足提示下显示原有条件答案。
+2. 点击正文E引用，确认打开原有证据详情；底部引用列表仍可点击。
+3. 打开已有ANSWER和CONFLICT记录（若有），确认正文、引用及冲突结构保持可用。
+4. 空内容/纯空白内容通过受控前端夹具检查：显示兜底；不修改真实聊天记录。
+
+本阶段API、RAG及Citation版本保持原值。无单独自动化前端测试脚本；全量评测、压力和模型联调本阶段无需执行。
+
 | 阶段或资产 | 当前规模 | 主要用途 | 不能替代的工作 |
 |---|---:|---|---|
 | M0/M1 浏览器与工程冒烟 | Chrome 89 清单 12 步；现代浏览器已留存记录 | 生产构建、导航、抽屉、表单、三状态样式、键盘操作和控制台异常 | 不评价 RAG 回答质量 |

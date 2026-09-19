@@ -4,6 +4,16 @@
 
 ## 1. 数据边界
 
+S3最新迁移为0010_conversation_context，本机已应用。其他环境按 `alembic upgrade head` 升级后重启后端。新增列记录检索问题、补全策略和用户确认来源，历史保持NULL。诊断先检查范围/权限/IndexRun是否变化及短回复是否明确。失败轮次不保存确认；纠正已确认条件使用“改为二类”等新回复，不直接修改历史JSON。
+
+### 问答耗时定位（query_timing_v1）
+
+代码加载后，API的logs/api.log新增query_stage_started、query_stage、query_timing_summary，按request_id关联。汇总包含排队、初始化、检索子阶段、Context和生成调用；父级total包含子级，不能重复相加。HTTP事件次数用于确认重试，answer_validation_failed用于确认格式校验重生成。日志只保留耗时、计数、状态码和错误类型，不输出问题/Prompt/草稿。旧请求无分段数据，不能回填。
+最小复测入口为backend/tests/manual_query_timing.py，顺序执行三个批准问题，产物写outputs独立目录；真实服务可用时才手动运行。详见[2026-09-19验证记录](../testing/QUERY_TIMING_VERIFICATION_2026-09-19.md)。
+
+S2（2026-09-19）新增0009_chat_answerability迁移，只向chat_message增加四个可空字段，历史不回填。本机已应用；其他环境先执行 `alembic upgrade head` 再加载代码。若出现no such column: chat_message.answerability，检查迁移目标和head，按正常迁移修复。
+回退应用需选择能兼容新旧回答契约的版本；正常回退保留新增列及数据。不要通过迁移downgrade删除新回答快照字段。模型输出校验失败会有限重试，仍失败公开返回ANSWER_VALIDATION_FAILED；语义校验失败返回SUPPORT_CHECK_FAILED，二者均无内部草稿正文。
+
 - `var/platform.db`：会话、消息、Citation 快照、反馈、用户、配置和诊断记录。
 - `var/knowledge/policy_parser.db`：Document、ParseRun、Node、ChunkRun、Chunk 和 IndexRun。
 - `var/knowledge/source_documents`、`accepted`、`pdf`：当前知识数据需要的文件。

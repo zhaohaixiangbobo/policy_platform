@@ -12,11 +12,11 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from .citation import CitationRegistry
-from .models import AnswerStatus
+from .models import AnswerStatus, ANSWER_JSON_SCHEMA, ANSWERABILITIES, REASON_CODES, MISSING_FIELDS
 
 
 _CITATION_PATTERN = re.compile(r"\[(E[1-9][0-9]*)\]")
-_ROOT_KEYS = {"status", "answer", "citations", "conflicts", "warnings"}
+_ROOT_KEYS = set(ANSWER_JSON_SCHEMA["required"])
 
 
 class AnswerValidationError(ValueError):
@@ -49,6 +49,10 @@ class ParsedAnswer:
     citations: tuple[str, ...]
     conflicts: tuple[ConflictRecord, ...]
     warnings: tuple[str, ...]
+    answerability: str = "NONE"
+    reason_code: str = "NO_RELEVANT_EVIDENCE"
+    missing_fields: tuple[str, ...] = ()
+    clarification_question: str | None = None
 
     @property
     def answerable(self) -> bool:
@@ -57,6 +61,10 @@ class ParsedAnswer:
     def to_dict(self) -> dict[str, Any]:
         return {
             "status": self.status.value,
+            "answerability": self.answerability,
+            "reason_code": self.reason_code,
+            "missing_fields": list(self.missing_fields),
+            "clarification_question": self.clarification_question,
             "answer": self.answer,
             "answerable": self.answerable,
             "citations": list(self.citations),
@@ -125,7 +133,40 @@ class AnswerParser:
                     "conflict_evidence_too_few", "CONFLICT至少需要两个不同证据编号"
                 )
 
-        return ParsedAnswer(status, answer, citations, conflicts, warnings)
+        ability = value["answerability"]
+        reason = value["reason_code"]
+        allowed = {
+            AnswerStatus.ANSWER: ("SUFFICIENT", "PARTIAL"),
+            AnswerStatus.INSUFFICIENT_EVIDENCE: ("PARTIAL", "NONE"),
+            AnswerStatus.CONFLICT: ("SUFFICIENT", "PARTIAL"),
+        }
+        if ability not in ANSWERABILITIES or ability not in allowed[status]:
+            raise AnswerValidationError("invalid_answerability", "status与answerability组合非法")
+        if reason not in REASON_CODES[:6]:
+            raise AnswerValidationError("invalid_reason", "reason_code不是模型可用原因码")
+        missing = self._string_tuple(value["missing_fields"], "missing_fields", allow_empty=True)
+        self._require_unique(missing, "missing_fields")
+        if any(field not in MISSING_FIELDS for field in missing):
+            raise AnswerValidationError("invalid_missing_fields", "包含未支持的澄清字段")
+        question = value["clarification_question"]
+        if question is not None:
+            question = self._nonempty_string(question, "clarification_question")
+            if _CITATION_PATTERN.search(question):
+                raise AnswerValidationError("invalid_clarification", "追问只用于收集用户条件，不携带证据引用")
+        if reason == "MISSING_USER_CONTEXT":
+            if ability != "PARTIAL" or not missing or question is None:
+                raise AnswerValidationError("invalid_clarification", "缺用户条件时须给出PARTIAL、字段和追问")
+        elif missing or question is not None:
+            raise AnswerValidationError("invalid_clarification", "只有缺用户条件时提供澄清字段和追问")
+        if (reason == "COMPLETE") != (status == AnswerStatus.ANSWER and ability == "SUFFICIENT"):
+            raise AnswerValidationError("invalid_reason", "完整回答使用COMPLETE")
+        if (reason == "CONFLICTING_EVIDENCE") != (status == AnswerStatus.CONFLICT):
+            raise AnswerValidationError("invalid_reason", "冲突状态与原因必须一致")
+        if (reason == "NO_RELEVANT_EVIDENCE") != (ability == "NONE"):
+            raise AnswerValidationError("invalid_reason", "无相关证据对应NONE")
+        if ability == "PARTIAL" and not citations:
+            raise AnswerValidationError("partial_without_citation", "部分答案须引用相关证据")
+        return ParsedAnswer(status, answer, citations, conflicts, warnings, ability, reason, missing, question)
 
     def _parse_conflicts(
         self,

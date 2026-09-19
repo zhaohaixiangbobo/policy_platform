@@ -1,6 +1,6 @@
 # 制度知识智能服务平台
 
-本仓库负责制度平台前端、Platform API、平台业务数据和完整知识流水线。制度问答由 `backend/knowledge` 中的进程内 RAG Runtime 执行，对 Platform 保持 `rag_api_v1_1` 结果语义，不再启动或调用 `D:\2-code\rag` 的 8010 服务。
+本仓库负责制度平台前端、Platform API、平台业务数据和完整知识流水线。制度问答由 `backend/knowledge` 中的进程内 RAG Runtime 执行，新回答使用 `rag_api_v1_2`（兼容旧v1_1快照），不再启动或调用 `D:\2-code\rag` 的 8010 服务。
 
 ## 工程结构
 
@@ -105,6 +105,9 @@ Set-Location 'D:\2-code\policy-platform\backend'
 
 ## 事实源
 
+- [项目文档总台账](docs/README.md)
+- [当前各模块版本与配置](docs/README.md#7-当前实现版本台账)
+- [问答质量与混合检索开发方案（S1—S3代码完成，后续分阶段实施）](docs/RAG_QUALITY_EVOLUTION_PLAN.md)
 - [当前项目交接说明](docs/PROJECT_HANDOFF.md)
 - [统一知识模块架构决策](docs/decisions/ADR-0002-UNIFIED-KNOWLEDGE-MODULE.md)
 - [进程内RAG问答边界](docs/decisions/ADR-0004-IN-PROCESS-RAG-QUERY.md)

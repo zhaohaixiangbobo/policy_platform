@@ -1,0 +1,42 @@
+[
+  {
+    "index": 1,
+    "mode": "keep_alive",
+    "document_count": 20,
+    "time": "2026-09-19 15:28:55+0800",
+    "status": 200,
+    "server": "uvicorn",
+    "connection": null,
+    "elapsed_ms": 189.692
+  },
+  {
+    "index": 2,
+    "mode": "fresh_close",
+    "document_count": 20,
+    "time": "2026-09-19 15:28:57+0800",
+    "status": 200,
+    "server": "uvicorn",
+    "connection": "close",
+    "elapsed_ms": 187.094
+  },
+  {
+    "index": 3,
+    "mode": "keep_alive",
+    "document_count": 20,
+    "time": "2026-09-19 15:28:58+0800",
+    "status": 200,
+    "server": "uvicorn",
+    "connection": null,
+    "elapsed_ms": 96.934
+  },
+  {
+    "index": 4,
+    "mode": "fresh_close",
+    "document_count": 20,
+    "time": "2026-09-19 15:28:59+0800",
+    "status": 200,
+    "server": "uvicorn",
+    "connection": "close",
+    "elapsed_ms": 183.363
+  }
+]

@@ -45,6 +45,19 @@ Set-Location 'D:\2-code\policy-platform'
 
 ## 最小检查
 
+### S2升级（2026-09-19）
+
+加载新代码前执行迁移，再重启后端：
+
+```powershell
+Set-Location 'D:\2-code\policy-platform\backend'
+& 'D:\3-anaconda\envs\py312\python.exe' -m alembic upgrade head
+& 'D:\3-anaconda\envs\py312\python.exe' -m alembic current
+```
+
+最新head为0010_conversation_context，本机S3已应用。无需新依赖、重新Embedding或发布索引。新回答应报告rag_api_v1_2，Prompt v4、Schema v3、Generator配置v3、Pipeline v2、Quality Gate v3；旧记录保持原版本和空的新字段。S3新增Platform补全策略clarification_rewrite_v1，重启后端加载；前端生产环境需要重新构建。
+语义门禁沿用POLICY_QUALITY_GATE_ENABLED，默认false；S2不增加默认LLM调用。前端如为生产构建，需按原流程重新构建发布。
+
 ```powershell
 Invoke-RestMethod 'http://127.0.0.1:8020/api/v1/health/ready'
 

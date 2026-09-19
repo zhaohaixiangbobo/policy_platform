@@ -1,0 +1,56 @@
+[
+  {
+    "index": 1,
+    "mode": "keep_alive",
+    "time": "2026-09-19 15:27:50+0800",
+    "status": 200,
+    "server": "uvicorn",
+    "connection": null,
+    "elapsed_ms": 183.927
+  },
+  {
+    "index": 2,
+    "mode": "fresh_close",
+    "time": "2026-09-19 15:27:51+0800",
+    "status": 200,
+    "server": "uvicorn",
+    "connection": "close",
+    "elapsed_ms": 116.372
+  },
+  {
+    "index": 3,
+    "mode": "keep_alive",
+    "time": "2026-09-19 15:27:52+0800",
+    "status": 200,
+    "server": "uvicorn",
+    "connection": null,
+    "elapsed_ms": 71.249
+  },
+  {
+    "index": 4,
+    "mode": "fresh_close",
+    "time": "2026-09-19 15:27:53+0800",
+    "status": 200,
+    "server": "uvicorn",
+    "connection": "close",
+    "elapsed_ms": 121.324
+  },
+  {
+    "index": 5,
+    "mode": "keep_alive",
+    "time": "2026-09-19 15:27:54+0800",
+    "status": 200,
+    "server": "uvicorn",
+    "connection": null,
+    "elapsed_ms": 74.277
+  },
+  {
+    "index": 6,
+    "mode": "fresh_close",
+    "time": "2026-09-19 15:27:56+0800",
+    "status": 200,
+    "server": "uvicorn",
+    "connection": "close",
+    "elapsed_ms": 96.755
+  }
+]

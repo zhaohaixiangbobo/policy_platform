@@ -1,7 +1,7 @@
 /**
  * 文件说明：提供正式文件版本、制度系列、元数据修订、废止和索引发布的一体化治理页面。
  */
-import { CheckOutlined, ClockCircleOutlined, EditOutlined, FileSyncOutlined, LinkOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons';
+import { CheckOutlined, ClockCircleOutlined, EditOutlined, FileSyncOutlined, LinkOutlined, ReloadOutlined, RollbackOutlined, StopOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Drawer, Form, Input, List, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import type { Key } from 'react';
@@ -11,13 +11,15 @@ import {
   assignPolicySeries, confirmIndexPublication, createIndexPublication, createMetadataDraft,
   getManagedDocument, listIndexPublications, listManagedDocuments, listPolicySeries,
   retryIndexPublication, reviewMetadataRevision, submitMetadataRevision, updateMetadataRevision,
+  withdrawMetadataRevision,
 } from '../../api/admin';
 import type { IndexPublication, ManagedDocument, ManagedDocumentDetail, MetadataRevision, PolicySeries } from '../../api/admin';
 import { UiIcon } from '../../components/UiIcon';
+import { documentStatusClass, documentStatusLabel } from '../../utils/documentStatus';
 
 const lifecycleLabels: Record<string, string> = {
   DRAFT: '元数据草稿', PENDING_REVIEW: '元数据待审核', APPROVED: '元数据审核通过（待纳入索引）',
-  PUBLISHED: '已在当前快照生效', REJECTED: '元数据已驳回', SUPERSEDED: '历史元数据版本',
+  PUBLISHED: '已在当前快照生效', REJECTED: '元数据已驳回', WITHDRAWN: '已撤回', SUPERSEDED: '历史元数据版本',
 };
 
 const publicationLabels: Record<string, string> = {
@@ -37,6 +39,12 @@ const candidateFieldLabels: Record<string, string> = {
   ...fieldLabels,
   parser_profile: '解析结构类型',
 };
+
+// 元数据表单可人工选择的制度状态，文案复用制度库同一套映射，不开放"草案"。
+const documentStatusOptions = ['effective', 'repealed', 'expired', 'unknown'].map((value) => ({
+  value,
+  label: documentStatusLabel(value),
+}));
 
 type DraftRequestType = 'CORRECTION' | 'REPEAL' | 'EXPIRY';
 
@@ -103,10 +111,17 @@ export function KnowledgeGovernancePage() {
     };
   }, [publications.map((item) => `${item.id}:${item.status}`).join('|')]);
 
-  const current = detail?.revisions[0] ?? null;
   const activeRevision = detail?.revisions.find(
     (item) => item.id === Number(detail.document.active_metadata_revision_id),
   );
+  const actionableRevision = detail?.revisions.find(
+    (item) => ['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'REJECTED'].includes(item.lifecycle_status),
+  );
+  // WITHDRAWN只出现在历史列表；没有待处理修订时主工作区展示active快照。
+  const current = actionableRevision
+    ?? activeRevision
+    ?? detail?.revisions.find((item) => item.lifecycle_status !== 'WITHDRAWN')
+    ?? null;
   const workingRevision = useMemo<MetadataRevision | null>(() => {
     if (!pendingDraftType) return current;
     const base = activeRevision ?? current;
@@ -233,6 +248,26 @@ export function KnowledgeGovernancePage() {
     try { await reviewMetadataRevision(detail.document.id, current.id, approved, approved ? '元数据核对通过' : '元数据退回修改'); message.success(approved ? '审核通过，等待纳入IndexRun' : '已驳回'); await reloadDetail(); }
     catch (error) { message.error(error instanceof Error ? error.message : '审核失败'); }
   };
+  const withdraw = () => {
+    if (!detail || !current) return;
+    let reason = '';
+    Modal.confirm({
+      title: `撤回修订 ${current.revision_no}？`,
+      content: <Input.TextArea autoFocus rows={3} maxLength={2000} placeholder="请输入撤回原因" onChange={(event) => { reason = event.target.value; }} />,
+      okText: '确认撤回',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        if (!reason.trim()) {
+          message.error('请输入撤回原因');
+          throw new Error('撤回原因不能为空');
+        }
+        await withdrawMetadataRevision(detail.document.id, current.id, reason.trim());
+        message.success('元数据修订已撤回，可重新创建正确修订');
+        await reloadDetail();
+      },
+    });
+  };
   const saveSeries = async () => {
     if (!detail) return;
     try {
@@ -248,8 +283,8 @@ export function KnowledgeGovernancePage() {
     catch (error) { message.error(error instanceof Error ? error.message : '创建发布请求失败'); }
   };
 
-  const canCreateRevision = !pendingDraftType && (current?.lifecycle_status === 'PUBLISHED' || current?.lifecycle_status === 'REJECTED');
-  const lifecycleActionBlocked = Boolean(pendingDraftType) || current?.lifecycle_status === 'DRAFT' || current?.lifecycle_status === 'PENDING_REVIEW';
+  const canCreateRevision = !pendingDraftType && ['PUBLISHED', 'REJECTED', 'WITHDRAWN'].includes(current?.lifecycle_status ?? '');
+  const lifecycleActionBlocked = Boolean(pendingDraftType) || ['DRAFT', 'PENDING_REVIEW', 'APPROVED'].includes(current?.lifecycle_status ?? '');
   const canRegisterLifecycleChange = activeRevision?.status === 'effective' && !lifecycleActionBlocked;
   const statusLocked = ['MANUAL_CORRECTION', 'REPEAL', 'EXPIRY'].includes(workingRevision?.source_type ?? '');
 
@@ -258,7 +293,7 @@ export function KnowledgeGovernancePage() {
     { title: '文号', dataIndex: 'document_code', width: 180, render: (value: string | null) => value || '-' },
     { title: '发布机构', dataIndex: 'issuing_org', width: 180, render: (value: string | null) => value || '-' },
     { title: '元数据', dataIndex: 'request_status', width: 135, render: (value: string) => <Tag color={value === 'PUBLISHED' ? 'green' : value === 'APPROVED' ? 'blue' : 'orange'}>{lifecycleLabels[value] ?? value}</Tag> },
-    { title: '制度状态', dataIndex: 'status', width: 110, render: (value: string) => value === 'unknown' ? '待确认' : value },
+    { title: '制度状态', dataIndex: 'status', width: 110, render: (value: string) => { const label = documentStatusLabel(value); return <Tag className={`document-status-tag ${documentStatusClass(label)}`}>{label}</Tag>; } },
     { title: '操作', width: 100, render: (_: unknown, row: ManagedDocument) => <Button type="link" onClick={() => void openDetail(row.id)}>治理</Button> },
   ];
 
@@ -272,6 +307,7 @@ export function KnowledgeGovernancePage() {
           { value: 'ACTION_REQUIRED', label: '需要处理' }, { value: 'DRAFT', label: '草稿' },
           { value: 'PENDING_REVIEW', label: '待审核' }, { value: 'APPROVED', label: '审核通过待发布' },
           { value: 'PUBLISHED', label: '当前快照生效' }, { value: 'REJECTED', label: '已驳回' },
+          { value: 'WITHDRAWN', label: '已撤回' },
         ]} />
         <Select style={{ width: 190 }} value={sortBy} onChange={(value) => { setPage(1); setSortBy(value); }} options={[
           { value: 'ACTION_REQUIRED', label: '需要处理优先' }, { value: 'UPDATED_DESC', label: '最近更新优先' },
@@ -290,7 +326,7 @@ export function KnowledgeGovernancePage() {
             <div className="metadata-form-grid">
               {Object.entries(fieldLabels).map(([name, label]) => {
                 if (name === 'status') {
-                  return <Form.Item key={name} name={name} label={label}><Select disabled={statusLocked} options={[{ value: 'effective', label: '现行有效' }, { value: 'repealed', label: '已废止' }, { value: 'expired', label: '已失效' }, { value: 'unknown', label: '状态待确认' }]} /></Form.Item>;
+                  return <Form.Item key={name} name={name} label={label}><Select disabled={statusLocked} options={documentStatusOptions} /></Form.Item>;
                 }
                 const expiryRequired = workingRevision.source_type === 'EXPIRY' && name === 'expiry_date';
                 const isDateField = ['publish_date', 'effective_date', 'expiry_date'].includes(name);
@@ -302,7 +338,7 @@ export function KnowledgeGovernancePage() {
             {workingRevision.source_type === 'EXPIRY' && <Alert showIcon type="info" message="失效：因有效期届满等客观条件终止效力" description="请使用日期控件确认失效日期并填写失效说明；审核通过后仍需构建全量 IndexRun，并在 Alias 切换成功后正式生效。" />}
             {(workingRevision.source_type === 'REPEAL' || workingRevision.status === 'repealed') && <><div className="metadata-form-grid"><Form.Item name="repeal_date" label="废止日期" rules={workingRevision.source_type === 'REPEAL' ? [{ required: true, message: '请填写废止日期' }] : undefined}><Input type="date" /></Form.Item><Form.Item name="repeal_reason" label="废止原因" rules={workingRevision.source_type === 'REPEAL' ? [{ required: true, message: '请填写废止原因' }] : undefined}><Input /></Form.Item><Form.Item name="repeal_evidence" label="废止依据" rules={workingRevision.source_type === 'REPEAL' ? [{ required: true, message: '请填写废止依据' }] : undefined}><Input /></Form.Item></div><Alert showIcon type="info" message="废止：由管理机关主动终止制度效力" description="本页确认该文件版本的废止元数据；如果由另一份制度废止，还应在制度关系页建立REPEALS关系并绑定原文证据。" action={<Button size="small" onClick={() => navigate('/admin/relations')}>前往制度关系</Button>} /></>}
           </Form>
-          <Space>{workingRevision.lifecycle_status === 'DRAFT' && <>{pendingDraftType && <Button onClick={() => { setPendingDraftType(null); setPendingDraftDirty(false); }}>退出编辑</Button>}<Button onClick={() => void save()}>保存草稿</Button><Button type="primary" loading={actionLoading} onClick={() => void submit()}>保存并提交审核</Button></>}{workingRevision.lifecycle_status === 'PENDING_REVIEW' && <><Button type="primary" icon={<UiIcon icon={CheckOutlined} />} onClick={() => void review(true)}>审核通过</Button><Button danger onClick={() => void review(false)}>驳回</Button></>}</Space>
+          <Space>{workingRevision.lifecycle_status === 'DRAFT' && <>{pendingDraftType && <Button onClick={() => { setPendingDraftType(null); setPendingDraftDirty(false); }}>退出编辑</Button>}<Button onClick={() => void save()}>保存草稿</Button><Button type="primary" loading={actionLoading} onClick={() => void submit()}>保存并提交审核</Button></>}{workingRevision.lifecycle_status === 'PENDING_REVIEW' && <><Button type="primary" icon={<UiIcon icon={CheckOutlined} />} onClick={() => void review(true)}>审核通过</Button><Button danger onClick={() => void review(false)}>驳回</Button></>}{!pendingDraftType && ['DRAFT', 'PENDING_REVIEW', 'APPROVED'].includes(workingRevision.lifecycle_status) && workingRevision.source_type !== 'PARSE_EXTRACTED' && <Button danger icon={<UiIcon icon={RollbackOutlined} />} onClick={withdraw}>撤回修订</Button>}</Space>
         </Card></section>
         <aside><Card size="small" title="解析识别候选"><List size="small" dataSource={Object.entries(candidateGroups)} renderItem={([field, items]) => <List.Item className="metadata-candidate-group"><div><strong>{candidateFieldLabels[field] ?? field}</strong>{items.slice(0, 3).map((item) => <div className="metadata-candidate-item" key={item.id}><Button block type="link" size="small" disabled={workingRevision.lifecycle_status !== 'DRAFT' || !(field in fieldLabels)} onClick={() => { form.setFieldValue(field as keyof MetadataRevision, item.normalized_value || item.raw_value); if (pendingDraftType) setPendingDraftDirty(true); }}>{item.normalized_value || item.raw_value}</Button><small>置信度 {(item.confidence * 100).toFixed(0)}% · {item.page_start ? `第${item.page_start}页` : '未定位页码'}</small></div>)}</div></List.Item>} /></Card><Card size="small" title="修订历史"><List size="small" dataSource={detail.revisions} renderItem={(item) => <List.Item><Space><Tag>{item.revision_no}</Tag><span>{lifecycleLabels[item.lifecycle_status] ?? item.lifecycle_status}</span></Space></List.Item>} /></Card></aside>
       </div>}

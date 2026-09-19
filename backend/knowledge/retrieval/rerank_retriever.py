@@ -17,6 +17,7 @@ from ..indexing.config import (
 )
 from .reranker import RerankResponse
 from .retriever import DenseRetriever, SearchFilters
+from ..telemetry import timed, call
 
 
 class RerankClient(Protocol):
@@ -54,6 +55,7 @@ class DenseRerankRetriever:
         }
         return sha256_text(canonical_json(value))
 
+    @timed("retrieval_total")
     def search(
         self, query: str, *, filters: SearchFilters | None = None
     ) -> list[dict[str, Any]]:
@@ -65,7 +67,7 @@ class DenseRerankRetriever:
         if not dense_results:
             return []
         top_n = min(self.config.output_top_k, len(dense_results))
-        response = self.rerank_client.rerank(
+        response = call("reranker_total", self.rerank_client.rerank,
             query,
             [str(item["retrieval_text"]) for item in dense_results],
             top_n=top_n,

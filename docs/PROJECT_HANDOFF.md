@@ -20,7 +20,7 @@
 1. 浏览器只访问 Platform API，不直接访问数据库、Qdrant 或模型服务。
 2. Platform 问答只能通过 `KnowledgeService` 调用进程内 `RagRuntime`，应用层不得越过该服务直接调用 SQLite、Qdrant 或模型客户端。
 3. Platform 数据与知识数据继续使用两个 SQLite，不合并表和迁移历史。
-4. 问答保持 `rag_api_v1_1` 的公开语义，正确处理 `ANSWER`、`INSUFFICIENT_EVIDENCE` 和 `CONFLICT`。
+4. 新问答使用 `rag_api_v1_2`（兼容旧v1_1快照），保留三状态，增加Answerability、原因码和结构化澄清。
 5. Citation 保留 `document_id`、`primary_node_id`、各类 run ID、证据快照及公开版本字段。
 6. `quality_gate.version` 按响应保存，不写死版本，也不依赖受控 debug 草稿哈希、Claim 绑定或 Verifier 判定。
 7. 响应 SLA、提示阈值和并发容量仍未冻结。
@@ -67,5 +67,15 @@ var/
 正式索引后的端到端验收步骤见 [代办事项](代办.md#3-首份历史制度检索验收)。
 
 ## 5. 后续开发顺序
+
+2026-09-19追加：引用详情显示回答快照的制度状态；固定追问改为有条件的补充卡片。
+新增query_timing_v1阶段日志。三个慢问题复测捕获一次Reranker连接重试导致的49.25秒查询，见[测试记录](testing/QUERY_TIMING_VERIFICATION_2026-09-19.md)；未调整检索策略和服务超时。
+
+2026-09-19新增的问答增强工作按 [问答质量与混合检索分阶段方案](RAG_QUALITY_EVOLUTION_PLAN.md)执行。
+S1代码完成并通过类型检查：依据不足也展示公开正文和引用，空白正文才兜底；浏览器交互待验收。
+S2代码和0009迁移已完成，23项最小后端测试及类型检查通过；真实模型和浏览器验收待执行。
+S3补全策略clarification_rewrite_v1和0010迁移已完成，34项相关测试及类型检查通过，真实模型/浏览器待验收。
+S4/S5尚未实施，S6延后；当前版本见 [总台账第7节](README.md#7-当前实现版本台账)。
+每阶段交付同时更新接口、运行说明、测试指南和版本台账，具体清单见方案第6节。
 
 文档处理管理功能按 [文档处理模块规划](DOCUMENT_PROCESSING_MODULE_PLAN.md) 开发：先增加任务表和单进程 Worker，再实现上传、ParseRun 审核、ChunkRun 审核与 IndexRun 发布页面。不要在 FastAPI 请求线程或 `BackgroundTasks` 中执行完整解析和索引。

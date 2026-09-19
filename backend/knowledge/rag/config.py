@@ -73,19 +73,19 @@ class GenerationConfig(_HashedConfig):
     enable_thinking: bool = False
     application_concurrency_limit: int = 4
     response_format: str = "strict_json_schema"
-    schema_name: str = "policy_rag_answer_v2"
-    schema_version: str = "policy_rag_answer_schema_v2"
-    config_version: str = "generator_runtime_v2"
+    schema_name: str = "policy_rag_answer_v3"
+    schema_version: str = "policy_rag_answer_schema_v3"
+    config_version: str = "generator_runtime_v3"
 
     def __post_init__(self) -> None:
         if self.temperature != 0 or self.top_p != 1:
-            raise ValueError("generator_runtime_v2固定temperature=0、top_p=1")
+            raise ValueError("generator_runtime_v3固定temperature=0、top_p=1")
         if self.max_tokens != 1024:
-            raise ValueError("generator_runtime_v2固定max_tokens=1024")
+            raise ValueError("generator_runtime_v3固定max_tokens=1024")
         if self.timeout_seconds != 180 or self.max_retries != 2:
-            raise ValueError("generator_runtime_v2固定timeout=180、max_retries=2")
+            raise ValueError("generator_runtime_v3固定timeout=180、max_retries=2")
         if self.enable_thinking or self.application_concurrency_limit != 4:
-            raise ValueError("generator_runtime_v2固定关闭thinking且并发上限为4")
+            raise ValueError("generator_runtime_v3固定关闭thinking且并发上限为4")
         if self.response_format != "strict_json_schema":
             raise ValueError("第一版必须使用strict JSON Schema")
 
@@ -141,10 +141,10 @@ class RagPipelineConfig(_HashedConfig):
 
     answer_validation_retries: int = 1
     transport_retry_backoff_seconds: float = 1.0
-    pipeline_version: str = "rag_pipeline_v1"
+    pipeline_version: str = "rag_pipeline_v2"
 
     def __post_init__(self) -> None:
         if self.answer_validation_retries != 1:
-            raise ValueError("rag_pipeline_v1固定一次模型输出校验重试")
+            raise ValueError("rag_pipeline_v2固定一次模型输出校验重试")
         if self.transport_retry_backoff_seconds != 1.0:
-            raise ValueError("rag_pipeline_v1固定传输重试退避基数为1秒")
+            raise ValueError("rag_pipeline_v2固定传输重试退避基数为1秒")

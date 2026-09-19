@@ -72,13 +72,6 @@ import type {
 import type { DocumentSummary } from '../types/documents';
 import { parseChatLaunchState } from '../utils/chatNavigation';
 
-// 当前公开回答没有推荐问题字段，以下内容只用于展示，不会写入数据库。
-const followUpPrompts = [
-  { key: 'basis', label: '这项规定的适用范围是什么？' },
-  { key: 'materials', label: '办理时需要准备哪些材料？' },
-  { key: 'exceptions', label: '是否存在例外或特殊情形？' },
-];
-
 const feedbackReasons = [
   { label: '未召回正确制度', value: 'retrieval_miss' },
   { label: 'Citation不能支撑答案', value: 'citation_mismatch' },
@@ -186,7 +179,11 @@ function AnswerBody({
     () => new Map(item.citations.map((citation) => [normalizeCitationLabel(citation.label), citation])),
     [item.citations],
   );
-  const markdown = citationMarkdown(item.content, item.citations);
+  // 所有回答状态共用公开正文和引用渲染，空正文才使用状态对应的兜底说明。
+  const fallbackContent = item.answer_status === 'INSUFFICIENT_EVIDENCE'
+    ? '当前可用证据不足以确定结论。请补充适用部门、时间或具体业务情形后继续追问。'
+    : '本次回答暂无正文，请重试或查看回答详情。';
+  const markdown = citationMarkdown(item.content.trim() || fallbackContent, item.citations);
   const components = useMemo(
     () => markdownComponents(citationByLabel, onCitation),
     [citationByLabel, onCitation],
@@ -212,21 +209,26 @@ function AnswerBody({
 
   return (
     <article className="assistant-answer">
+      {item.rewrite_used && item.retrieval_query ? (
+        <details><summary>本轮已结合你确认的条件查询</summary><Typography.Paragraph>{item.retrieval_query}</Typography.Paragraph></details>
+      ) : null}
+      {item.answer_status === 'ANSWER' && item.answerability === 'PARTIAL' ? (
+        <div className="answer-state">
+          <Typography.Title level={5}>{item.reason_code === 'MISSING_USER_CONTEXT'
+            ? '已提供条件答案，仍需补充信息' : '已提供部分答案，尚不能确定完整结论'}</Typography.Title>
+        </div>
+      ) : null}
       {item.answer_status === 'INSUFFICIENT_EVIDENCE' ? (
         <div className="answer-state answer-state-insufficient">
-          <Typography.Title level={5}>暂未找到足够依据</Typography.Title>
-          <Typography.Paragraph>
-            当前制度库中暂未找到足够依据支持可靠结论。你可以补充适用部门、时间或具体业务情形后继续追问。
-          </Typography.Paragraph>
+          <Typography.Title level={5}>尚不能确定最终结论</Typography.Title>
         </div>
-      ) : (
-        <div className="answer-markdown">
-          {item.answer_status === 'CONFLICT' ? (
-            <Typography.Title level={5} className="conflict-heading">当前制度中存在不同规定</Typography.Title>
-          ) : null}
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{markdown}</ReactMarkdown>
-        </div>
-      )}
+      ) : null}
+      <div className="answer-markdown">
+        {item.answer_status === 'CONFLICT' ? (
+          <Typography.Title level={5} className="conflict-heading">当前制度中存在不同规定</Typography.Title>
+        ) : null}
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{markdown}</ReactMarkdown>
+      </div>
 
       {item.answer_status === 'CONFLICT' && item.conflicts.length > 0 ? (
         <div className="conflict-list">
@@ -825,16 +827,17 @@ export function ChatPage() {
           onCitation={selectCitation}
           onFeedback={(rating) => handleFeedback(item, rating)}
         />
-        {item.id === latestAssistantId && !sending ? (
-          <Prompts
-            rootClassName="follow-up-prompts"
-            items={followUpPrompts}
-            wrap
-            onItemClick={({ data }) => {
-              setDraft(String(data.label ?? ''));
+        {item.id === latestAssistantId && !sending && item.answerability === 'PARTIAL'
+          && item.reason_code === 'MISSING_USER_CONTEXT' && item.clarification_question ? (
+          <section className="follow-up-prompts" aria-label="需要补充">
+            <Typography.Text strong>需要补充</Typography.Text>
+            <Typography.Paragraph>{item.clarification_question}</Typography.Paragraph>
+            <Button onClick={() => {
+              // S3由服务端承接最近的澄清轮次，只提交用户本轮明确补充的信息。
+              setDraft('补充信息：');
               senderRef.current?.focus();
-            }}
-          />
+            }}>补充信息</Button>
+          </section>
         ) : null}
       </>
     ) : <div className="user-message-content">{item.content}</div>,

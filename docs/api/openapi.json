@@ -251,12 +251,39 @@
             ],
             "title": "Answer Status"
           },
+          "answerability": {
+            "anyOf": [
+              {
+                "enum": [
+                  "SUFFICIENT",
+                  "PARTIAL",
+                  "NONE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answerability"
+          },
           "citations": {
             "items": {
               "$ref": "#/components/schemas/CitationSnapshot"
             },
             "title": "Citations",
             "type": "array"
+          },
+          "clarification_question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clarification Question"
           },
           "conflicts": {
             "items": {
@@ -279,6 +306,16 @@
               }
             ],
             "title": "Contract Version"
+          },
+          "conversation_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationContextSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "format": "date-time",
@@ -319,6 +356,20 @@
             ],
             "title": "Index Run Id"
           },
+          "missing_fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing Fields"
+          },
           "quality_gate": {
             "anyOf": [
               {
@@ -348,6 +399,17 @@
             "title": "Query Scope",
             "type": "string"
           },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
           "request_id": {
             "title": "Request Id",
             "type": "string"
@@ -359,6 +421,39 @@
             ],
             "title": "Resolved Document Scope Mode",
             "type": "string"
+          },
+          "retrieval_query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Query"
+          },
+          "rewrite_strategy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rewrite Strategy Version"
+          },
+          "rewrite_used": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rewrite Used"
           },
           "role": {
             "enum": [
@@ -652,6 +747,25 @@
         "title": "ComponentHealth",
         "type": "object"
       },
+      "ConfirmedConversationValue": {
+        "description": "用户明确确认的值及对应消息来源。",
+        "properties": {
+          "source_message_id": {
+            "title": "Source Message Id",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "source_message_id"
+        ],
+        "title": "ConfirmedConversationValue",
+        "type": "object"
+      },
       "ConflictPositionSnapshot": {
         "properties": {
           "citations": {
@@ -692,6 +806,33 @@
           "positions"
         ],
         "title": "ConflictSnapshot",
+        "type": "object"
+      },
+      "ConversationContextSnapshot": {
+        "description": "仅保存用户问题和确认条件，不包含历史模型回答。",
+        "properties": {
+          "confirmed": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ConfirmedConversationValue"
+            },
+            "title": "Confirmed",
+            "type": "object"
+          },
+          "root_message_id": {
+            "title": "Root Message Id",
+            "type": "string"
+          },
+          "root_question": {
+            "title": "Root Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "root_question",
+          "root_message_id",
+          "confirmed"
+        ],
+        "title": "ConversationContextSnapshot",
         "type": "object"
       },
       "CurrentUserResponse": {
@@ -2433,6 +2574,22 @@
           }
         },
         "title": "MetadataRevisionUpdateRequest",
+        "type": "object"
+      },
+      "MetadataWithdrawRequest": {
+        "description": "撤回未发布人工修订时必须保留明确原因。",
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "MetadataWithdrawRequest",
         "type": "object"
       },
       "ParseNodeCorrectionRequest": {
@@ -4399,6 +4556,66 @@
           }
         },
         "summary": "Submit Metadata Revision",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/knowledge/documents/{document_id}/metadata/{revision_id}/withdraw": {
+      "post": {
+        "description": "撤回尚未发布的人工修订，释放该制度的唯一变更槽位。",
+        "operationId": "withdraw_metadata_revision_api_v1_admin_knowledge_documents__document_id__metadata__revision_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "title": "Revision Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetadataWithdrawRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw Metadata Revision",
         "tags": [
           "admin"
         ]

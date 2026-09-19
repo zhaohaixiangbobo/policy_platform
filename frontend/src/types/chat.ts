@@ -61,6 +61,14 @@ export interface ChatMessage {
   access_scope_count: number;
   content: string;
   answer_status: AnswerStatus | null;
+  answerability: 'SUFFICIENT' | 'PARTIAL' | 'NONE' | null;
+  reason_code: string | null;
+  missing_fields: string[] | null;
+  clarification_question: string | null;
+  rewrite_used: boolean | null;
+  retrieval_query: string | null;
+  rewrite_strategy_version: string | null;
+  conversation_context: { root_question: string; root_message_id: string; confirmed: Record<string, { value: string; source_message_id: string }> } | null;
   request_id: string;
   engine_request_id: string | null;
   contract_version: string | null;

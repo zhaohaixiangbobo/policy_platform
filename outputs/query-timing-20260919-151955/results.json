@@ -1,0 +1,293 @@
+[
+  {
+    "request_id": "timing-3b9c62db328042c0ac23972b685320f0",
+    "question": "行业级一等奖和省级一等奖的奖励标准一样吗？",
+    "response": {
+      "contract_version": "rag_api_v1_2",
+      "request_id": "2912a432-226d-4ad9-8f85-5e4620b2102e",
+      "status": "ANSWER",
+      "answerable": true,
+      "answer": "不一样。行业省级一类竞赛获得一等奖的个人一次性奖励不超过10000元；[E1]天津电网行业省级二类竞赛获得一等奖的个人一次性奖励不超过6000元。[E3]",
+      "answerability": "SUFFICIENT",
+      "reason_code": "COMPLETE",
+      "missing_fields": [],
+      "clarification_question": null,
+      "citations": [
+        {
+          "citation_version": "citation_v1",
+          "evidence_uid_version": "evidence_uid_v1",
+          "label": "E1",
+          "evidence_uid": "ev_3a93f03010bea6303df776bc9fdf1518",
+          "document_id": 2,
+          "primary_node_id": 44,
+          "parse_run_id": 2,
+          "chunk_run_id": 2,
+          "index_run_id": 8,
+          "chunk_id": 21,
+          "document_title": "天才市电网专卖局关于印发职业技能竞赛表彰奖励办法（试行）的通知",
+          "document_code": "津电人〔2018〕110号",
+          "document_status": "effective",
+          "source_reference": "pending/d2533669-54dd-4d12-b69d-38739ec7e2cc_天才市电网专卖局关于印发天才市电网专卖局_公司_职业技能竞赛表彰奖励办法_试行_的通知.docx",
+          "path_text": "第四条 行业省级一类竞赛获奖奖励标准：",
+          "page_start": 2,
+          "page_end": 3,
+          "quote": "第四条  行业省级一类竞赛获奖奖励标准：\n（一）获得一等奖的个人一次性给予不超过10000元的奖励。\n（二）获得二等奖的个人一次性给予不超过6000元的奖励。\n（三）获得优胜奖的个人一次性给予不超过4000元的奖励。\n（四）获得优秀团队奖（组织奖或团体奖等集体奖项）时，给予团队成员每人一次性不超过4000元的奖励。\n（五）对获奖选手所在单位（部门）的奖励事宜另行研究确定。",
+          "truncated": false,
+          "snapshot_hash": "sha256:35891220829630ba677d725c1d7cf563b077db39ed2b68baf2f861ce88080f4e"
+        },
+        {
+          "citation_version": "citation_v1",
+          "evidence_uid_version": "evidence_uid_v1",
+          "label": "E3",
+          "evidence_uid": "ev_78a3c167c171f6b1dada9065dc162901",
+          "document_id": 2,
+          "primary_node_id": 50,
+          "parse_run_id": 2,
+          "chunk_run_id": 2,
+          "index_run_id": 8,
+          "chunk_id": 22,
+          "document_title": "天才市电网专卖局关于印发职业技能竞赛表彰奖励办法（试行）的通知",
+          "document_code": "津电人〔2018〕110号",
+          "document_status": "effective",
+          "source_reference": "pending/d2533669-54dd-4d12-b69d-38739ec7e2cc_天才市电网专卖局关于印发天才市电网专卖局_公司_职业技能竞赛表彰奖励办法_试行_的通知.docx",
+          "path_text": "第五条",
+          "page_start": 3,
+          "page_end": 3,
+          "quote": "第五条  天津电网行业省级二类竞赛获奖奖励标准：\n（一）获得一等奖的个人一次性给予不超过6000元的奖励。\n（二）获得二等奖的个人一次性给予不超过4000元的奖励。\n（三）获得优胜奖的个人一次性给予不超过2000元的奖励。\n（四）对获团体奖第一、第二、第三名单位的奖励，按有关规定执行。",
+          "truncated": false,
+          "snapshot_hash": "sha256:7611c320c706f216c4c12e7d5f926d12c555dd55bbe62c39bc7211f0e84fe6e5"
+        }
+      ],
+      "conflicts": [],
+      "warnings": [],
+      "retrieval": {
+        "index_run_id": 8,
+        "dense_count": 20,
+        "rerank_count": 8,
+        "rerank_returned_count": 8
+      },
+      "quality_gate": {
+        "version": "answer_quality_gate_v3",
+        "status": "NOT_REQUIRED",
+        "semantic_verification": "DISABLED",
+        "checked_claim_count": 0,
+        "reason_codes": [
+          "quality_gate_disabled"
+        ],
+        "verifier_schema_version": "support_verifier_schema_v2",
+        "verifier_schema_hash": "155d84577ccd016ef0f457a4c2e48cae68cde292a03512306250a9e9c24ce578",
+        "verifier_prompt_hash": "9689a5090f9cfa7e572802846dd14b37964ce63f872c74e4b4b4d34ef46e0e2c"
+      },
+      "provenance": {
+        "rag_version": "rag_pipeline_v2",
+        "generator_model": "Qwen/Qwen3.8-27B",
+        "generator_revision": "deployment-unreported",
+        "prompt_version": "policy_rag_prompt_v4",
+        "prompt_schema_version": "policy_rag_answer_schema_v3",
+        "retrieval_config_hash": "27bba4bc0e69908fee85bb17c82fe87917fe9090620df1556f36c66c721f6c12",
+        "context_config_hash": "d2212ce8849761f00b2f3b4b2582e60ed720179051ba8bd9fb8ef18e367fce20",
+        "rewrite_used": false
+      },
+      "latency_ms": {
+        "total": 5803.858,
+        "retrieval": 471.576,
+        "context": 3.571,
+        "llm": 5328.004
+      }
+    }
+  },
+  {
+    "request_id": "timing-f1c2eb1337ae42a7b4d07870202b9b5b",
+    "question": "获得个人一等奖以后，奖金是税前还是税后？",
+    "response": {
+      "contract_version": "rag_api_v1_2",
+      "request_id": "198a93c6-154b-40a6-9eed-0a0d16926df2",
+      "status": "ANSWER",
+      "answerable": true,
+      "answer": "获得个人一等奖的奖金是税前金额。[E1]",
+      "answerability": "SUFFICIENT",
+      "reason_code": "COMPLETE",
+      "missing_fields": [],
+      "clarification_question": null,
+      "citations": [
+        {
+          "citation_version": "citation_v1",
+          "evidence_uid_version": "evidence_uid_v1",
+          "label": "E1",
+          "evidence_uid": "ev_c7cfafdc087a867607c15882d38ebf24",
+          "document_id": 2,
+          "primary_node_id": 57,
+          "parse_run_id": 2,
+          "chunk_run_id": 2,
+          "index_run_id": 8,
+          "chunk_id": 25,
+          "document_title": "天才市电网专卖局关于印发职业技能竞赛表彰奖励办法（试行）的通知",
+          "document_code": "津电人〔2018〕110号",
+          "document_status": "effective",
+          "source_reference": "pending/d2533669-54dd-4d12-b69d-38739ec7e2cc_天才市电网专卖局关于印发天才市电网专卖局_公司_职业技能竞赛表彰奖励办法_试行_的通知.docx",
+          "path_text": "第八条",
+          "page_start": 3,
+          "page_end": 3,
+          "quote": "第八条  本办法中各项奖励标准均为税前金额，由市局（公司）统一拨付，获奖选手所在单位发放。",
+          "truncated": false,
+          "snapshot_hash": "sha256:da76437883619274c717a42a3a42302066cee8f7ceb63dcc7cf912c7e33f3e98"
+        }
+      ],
+      "conflicts": [],
+      "warnings": [],
+      "retrieval": {
+        "index_run_id": 8,
+        "dense_count": 20,
+        "rerank_count": 8,
+        "rerank_returned_count": 8
+      },
+      "quality_gate": {
+        "version": "answer_quality_gate_v3",
+        "status": "NOT_REQUIRED",
+        "semantic_verification": "DISABLED",
+        "checked_claim_count": 0,
+        "reason_codes": [
+          "quality_gate_disabled"
+        ],
+        "verifier_schema_version": "support_verifier_schema_v2",
+        "verifier_schema_hash": "155d84577ccd016ef0f457a4c2e48cae68cde292a03512306250a9e9c24ce578",
+        "verifier_prompt_hash": "9689a5090f9cfa7e572802846dd14b37964ce63f872c74e4b4b4d34ef46e0e2c"
+      },
+      "provenance": {
+        "rag_version": "rag_pipeline_v2",
+        "generator_model": "Qwen/Qwen3.8-27B",
+        "generator_revision": "deployment-unreported",
+        "prompt_version": "policy_rag_prompt_v4",
+        "prompt_schema_version": "policy_rag_answer_schema_v3",
+        "retrieval_config_hash": "27bba4bc0e69908fee85bb17c82fe87917fe9090620df1556f36c66c721f6c12",
+        "context_config_hash": "d2212ce8849761f00b2f3b4b2582e60ed720179051ba8bd9fb8ef18e367fce20",
+        "rewrite_used": false
+      },
+      "latency_ms": {
+        "total": 4273.484,
+        "retrieval": 456.635,
+        "context": 3.292,
+        "llm": 3812.842
+      }
+    }
+  },
+  {
+    "request_id": "timing-1254d40ee4124724bb1884d172acef1d",
+    "question": "省级一类个人一等奖奖励50000元，对吗？",
+    "response": {
+      "contract_version": "rag_api_v1_2",
+      "request_id": "fb37904d-e2d0-47fb-97f5-4d301a21ba33",
+      "status": "ANSWER",
+      "answerable": true,
+      "answer": "不对。根据制度规定，行业省级一类竞赛获得一等奖的个人，一次性给予不超过10000元的奖励，而非50000元。[E1] 50000元是国家级二类竞赛中一等奖且名次位列第一的奖励上限。[E2] 所有奖励标准均为税前金额。[E5]",
+      "answerability": "SUFFICIENT",
+      "reason_code": "COMPLETE",
+      "missing_fields": [],
+      "clarification_question": null,
+      "citations": [
+        {
+          "citation_version": "citation_v1",
+          "evidence_uid_version": "evidence_uid_v1",
+          "label": "E1",
+          "evidence_uid": "ev_3a93f03010bea6303df776bc9fdf1518",
+          "document_id": 2,
+          "primary_node_id": 44,
+          "parse_run_id": 2,
+          "chunk_run_id": 2,
+          "index_run_id": 8,
+          "chunk_id": 21,
+          "document_title": "天才市电网专卖局关于印发职业技能竞赛表彰奖励办法（试行）的通知",
+          "document_code": "津电人〔2018〕110号",
+          "document_status": "effective",
+          "source_reference": "pending/d2533669-54dd-4d12-b69d-38739ec7e2cc_天才市电网专卖局关于印发天才市电网专卖局_公司_职业技能竞赛表彰奖励办法_试行_的通知.docx",
+          "path_text": "第四条 行业省级一类竞赛获奖奖励标准：",
+          "page_start": 2,
+          "page_end": 3,
+          "quote": "第四条  行业省级一类竞赛获奖奖励标准：\n（一）获得一等奖的个人一次性给予不超过10000元的奖励。\n（二）获得二等奖的个人一次性给予不超过6000元的奖励。\n（三）获得优胜奖的个人一次性给予不超过4000元的奖励。\n（四）获得优秀团队奖（组织奖或团体奖等集体奖项）时，给予团队成员每人一次性不超过4000元的奖励。\n（五）对获奖选手所在单位（部门）的奖励事宜另行研究确定。",
+          "truncated": false,
+          "snapshot_hash": "sha256:35891220829630ba677d725c1d7cf563b077db39ed2b68baf2f861ce88080f4e"
+        },
+        {
+          "citation_version": "citation_v1",
+          "evidence_uid_version": "evidence_uid_v1",
+          "label": "E2",
+          "evidence_uid": "ev_111c8f4f618a5767c7412010013ccd14",
+          "document_id": 2,
+          "primary_node_id": 39,
+          "parse_run_id": 2,
+          "chunk_run_id": 2,
+          "index_run_id": 8,
+          "chunk_id": 20,
+          "document_title": "天才市电网专卖局关于印发职业技能竞赛表彰奖励办法（试行）的通知",
+          "document_code": "津电人〔2018〕110号",
+          "document_status": "effective",
+          "source_reference": "pending/d2533669-54dd-4d12-b69d-38739ec7e2cc_天才市电网专卖局关于印发天才市电网专卖局_公司_职业技能竞赛表彰奖励办法_试行_的通知.docx",
+          "path_text": "第三条",
+          "page_start": 2,
+          "page_end": 2,
+          "quote": "第三条  全国电网行业国家级二类竞赛获奖奖励标准：\n（一）获得一等奖且在一等奖获奖选手中名次位列第一的，一次性给予不超过50000元的奖励；其他获得一等奖的个人一次性给予不超过30000元的奖励。\n（二）获得优胜奖的个人一次性给予不超过10000元的奖励。\n（三）获得优秀团队奖时，给予团队成员每人一次性不超过6000元的奖励。\n（四）对获奖选手所在单位（部门）的奖励事宜另行研究确定。",
+          "truncated": false,
+          "snapshot_hash": "sha256:9f6891fcd531ddfc7c12889e1e16cc638f764e16cb3ae0b5072fbf65b8a6d2de"
+        },
+        {
+          "citation_version": "citation_v1",
+          "evidence_uid_version": "evidence_uid_v1",
+          "label": "E5",
+          "evidence_uid": "ev_c7cfafdc087a867607c15882d38ebf24",
+          "document_id": 2,
+          "primary_node_id": 57,
+          "parse_run_id": 2,
+          "chunk_run_id": 2,
+          "index_run_id": 8,
+          "chunk_id": 25,
+          "document_title": "天才市电网专卖局关于印发职业技能竞赛表彰奖励办法（试行）的通知",
+          "document_code": "津电人〔2018〕110号",
+          "document_status": "effective",
+          "source_reference": "pending/d2533669-54dd-4d12-b69d-38739ec7e2cc_天才市电网专卖局关于印发天才市电网专卖局_公司_职业技能竞赛表彰奖励办法_试行_的通知.docx",
+          "path_text": "第八条",
+          "page_start": 3,
+          "page_end": 3,
+          "quote": "第八条  本办法中各项奖励标准均为税前金额，由市局（公司）统一拨付，获奖选手所在单位发放。",
+          "truncated": false,
+          "snapshot_hash": "sha256:a0fb377ab1c8e519e7d5d46709a67d63ce4383c2d17bdbb3c9536f9db8b42c45"
+        }
+      ],
+      "conflicts": [],
+      "warnings": [],
+      "retrieval": {
+        "index_run_id": 8,
+        "dense_count": 20,
+        "rerank_count": 8,
+        "rerank_returned_count": 8
+      },
+      "quality_gate": {
+        "version": "answer_quality_gate_v3",
+        "status": "NOT_REQUIRED",
+        "semantic_verification": "DISABLED",
+        "checked_claim_count": 0,
+        "reason_codes": [
+          "quality_gate_disabled"
+        ],
+        "verifier_schema_version": "support_verifier_schema_v2",
+        "verifier_schema_hash": "155d84577ccd016ef0f457a4c2e48cae68cde292a03512306250a9e9c24ce578",
+        "verifier_prompt_hash": "9689a5090f9cfa7e572802846dd14b37964ce63f872c74e4b4b4d34ef46e0e2c"
+      },
+      "provenance": {
+        "rag_version": "rag_pipeline_v2",
+        "generator_model": "Qwen/Qwen3.8-27B",
+        "generator_revision": "deployment-unreported",
+        "prompt_version": "policy_rag_prompt_v4",
+        "prompt_schema_version": "policy_rag_answer_schema_v3",
+        "retrieval_config_hash": "27bba4bc0e69908fee85bb17c82fe87917fe9090620df1556f36c66c721f6c12",
+        "context_config_hash": "d2212ce8849761f00b2f3b4b2582e60ed720179051ba8bd9fb8ef18e367fce20",
+        "rewrite_used": false
+      },
+      "latency_ms": {
+        "total": 49250.085,
+        "retrieval": 42600.793,
+        "context": 2.969,
+        "llm": 6645.671
+      }
+    }
+  }
+]

@@ -14,6 +14,7 @@ from .citation import build_evidence_uid, safe_source_reference, source_rows_to_
 from .config import ContextBuilderConfig
 from .models import ContextBundle, EvidenceGroup, EvidenceRecord, OmittedEvidence
 from .token_budget import ConservativeTokenEstimator, TokenBudget
+from ..telemetry import timed
 
 
 class ContextDatabase(Protocol):
@@ -54,6 +55,7 @@ class ContextBuilder:
         if self.estimator.version != self.config.token_estimator_version:
             raise ValueError("Token估算器实现与Context配置版本不一致")
 
+    @timed("context_total")
     def build(
         self,
         question: str,

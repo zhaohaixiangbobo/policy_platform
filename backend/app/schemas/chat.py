@@ -66,6 +66,19 @@ class QualityGateSummary(BaseModel):
     reason_codes: list[str]
 
 
+class ConfirmedConversationValue(BaseModel):
+    """用户明确确认的值及对应消息来源。"""
+    value: str
+    source_message_id: str
+
+
+class ConversationContextSnapshot(BaseModel):
+    """仅保存用户问题和确认条件，不包含历史模型回答。"""
+    root_question: str
+    root_message_id: str
+    confirmed: dict[str, ConfirmedConversationValue]
+
+
 class ChatMessageResponse(BaseModel):
     id: str
     session_id: str
@@ -80,6 +93,14 @@ class ChatMessageResponse(BaseModel):
     access_scope_count: int
     content: str
     answer_status: Literal["ANSWER", "INSUFFICIENT_EVIDENCE", "CONFLICT"] | None
+    answerability: Literal["SUFFICIENT", "PARTIAL", "NONE"] | None = None
+    reason_code: str | None = None
+    missing_fields: list[str] | None = None
+    clarification_question: str | None = None
+    rewrite_used: bool | None = None
+    retrieval_query: str | None = None
+    rewrite_strategy_version: str | None = None
+    conversation_context: ConversationContextSnapshot | None = None
     request_id: str
     engine_request_id: str | None
     contract_version: str | None

@@ -5,6 +5,7 @@ activation 和 truncate 等未支持字段；同时校验返回数量、索引�
 """
 
 from __future__ import annotations
+from ..telemetry import call
 
 import math
 import time
@@ -101,7 +102,7 @@ class OpenAIRerankClient:
         last_error: Exception | None = None
         for attempt in range(self.config.max_retries + 1):
             try:
-                response = self.session.post(
+                response = call("reranker_http", self.session.post,
                     self.endpoint,
                     json=payload,
                     headers=self.headers,
@@ -131,7 +132,7 @@ class OpenAIRerankClient:
                     # 主动断连后重建连接池，避免复用已经失效的 keep-alive 连接。
                     self.session.close()
                     self.session = self._new_session()
-                    time.sleep(self.config.retry_backoff_seconds * (2**attempt))
+                    call("reranker_backoff", time.sleep, self.config.retry_backoff_seconds * (2**attempt))
         raise RerankerServiceError(f"Reranker 请求失败：{last_error}") from last_error
 
     def _validate_response(

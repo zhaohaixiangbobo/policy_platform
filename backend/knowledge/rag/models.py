@@ -24,11 +24,19 @@ class AnswerStatus(StrEnum):
     CONFLICT = "CONFLICT"
 
 
+ANSWERABILITIES = ("SUFFICIENT", "PARTIAL", "NONE")
+REASON_CODES = ("COMPLETE", "MISSING_USER_CONTEXT", "EVIDENCE_COVERAGE_GAP", "POLICY_LIMIT_ONLY", "NO_RELEVANT_EVIDENCE", "CONFLICTING_EVIDENCE", "ANSWER_VALIDATION_FAILED", "SUPPORT_CHECK_FAILED")
+MISSING_FIELDS = ("competition_category", "award_level", "recipient_type", "department", "applicable_date", "business_scenario")
+
 ANSWER_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["status", "answer", "citations", "conflicts", "warnings"],
+    "required": ["status", "answer", "citations", "conflicts", "warnings", "answerability", "reason_code", "missing_fields", "clarification_question"],
     "properties": {
+        "answerability": {"type": "string", "enum": list(ANSWERABILITIES)},
+        "reason_code": {"type": "string", "enum": list(REASON_CODES[:6])},
+        "missing_fields": {"type": "array", "items": {"type": "string", "enum": list(MISSING_FIELDS)}},
+        "clarification_question": {"type": ["string", "null"]},
         "status": {"type": "string", "enum": [status.value for status in AnswerStatus]},
         "answer": {"type": "string"},
         "citations": {

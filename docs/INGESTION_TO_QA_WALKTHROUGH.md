@@ -1,11 +1,26 @@
 # 制度文档入库到问答全流程说明（新人上手导览）
 
+> S3更新（2026-09-19）：ChatService在每轮QueryScopeResolver解析后，按最近完整问答的待澄清字段和用户确认值构造retrieval_query；记录clarification_rewrite_v1、原问题及来源消息。仅同范围/权限/IndexRun的明确短回复可承接，调用KnowledgeService一次并继续校验Citation。迁移0010保存快照，历史不回填；新话题或范围变化重置有效确认。RAG、Prompt和Citation版本保持S2版本。
+
+> S2更新（2026-09-19）：新生成结果为rag_api_v1_2，Generator一次输出status、answerability、reason_code、answer、missing_fields、clarification_question及引用；Parser校验组合及引用，程序无证据直接NONE。Platform迁移0009保存新字段，旧记录保持NULL。Prompt v4、Schema v3、Generator配置v3、Pipeline v2、Quality Gate v3；Context和Citation版本保持原值。语义门禁默认关闭，启用时对PARTIAL事实也校验，独立追问不进入事实校验。多轮补全尚属S3。最新版本以[总台账](README.md#7-当前实现版本台账)为准。
+
 > **文档定位**：面向第一次接触本项目的开发者，按数据流动顺序讲清「一份 DOCX 如何一步步变成可被问答引用的知识」。
 >
 > **生成日期**：2026-09-03
 >
 > **运行边界更新（2026-09-14）**：ADR-0004 已将 Web 问答恢复为 Platform 进程内
-> `KnowledgeService → RagRuntime`。本文的入库、审核和发布说明仍然有效，问答章节已按当前实现更新。
+> `KnowledgeService → RagRuntime`，`app/infrastructure/rag_api_client.py` 已删除，**不再需要启动
+> 原 `D:\2-code\rag` 的 8010 服务**。本文的入库、审核和发布说明仍然有效，问答链路按当前实现重写。
+>
+> **本次同步范围（2026-09-14）**：
+>
+> - 12.1 调用链锚点改为进程内四段（`chat.py` → `chat_service.py` → `query_scope_service.py` → `knowledge/service.py`），并补充 `GET /api/v1/chat/query-capabilities`。
+> - 新增 12.2「查询范围解析」（`app/application/query_scope_service.py`，`QueryScopeResolver` 与 5 个范围错误码）。
+> - 新增 12.3「Citation 三层响应后复核」、12.4「范围快照落库」（migration `0007_chat_document_scope`），原「统一 RAG Pipeline」顺延为 12.5。
+> - 第 7 章元数据方法名更正为 `ensure_draft`（原 `create_draft` 已不存在），并新增「废止与失效」小节（`knowledge/metadata_rules.py` 状态强制映射）。
+> - 第 7 章新增「撤回修订与唯一变更槽位」小节，对应**工作区尚未提交**的 migration `0008_metadata_change_open_slot` 与 `withdraw` 链路。
+> - 第 10-11 章补齐 `fix: p0-4` / `fix2` 遗漏内容：发布来源冻结（`exact_snapshot_v2`、migration `0005`/`0006`）、`freeze_exact_sources` 构建分支、Worker 双向核验，并修正 `publication_service.py`/`worker.py`/`indexing/database.py` 全部漂移行号。
+> - 16.1 前置依赖改为归属表格，明确进程内惰性初始化行为。
 >
 > **行号说明**：文中的行号基于本文生成时的代码状态，仅用于快速定位。代码改动后行号会漂移，**函数名和文件路径是更稳定的锚点**，定位不到时请按函数名搜索。
 
@@ -400,26 +415,37 @@ review_status = rejected  ? 'rejected'
 
 ```mermaid
 stateDiagram-v2
-    [*] --> DRAFT: create_draft()
+    [*] --> DRAFT: ensure_draft()
     DRAFT --> DRAFT: update_draft()
     DRAFT --> PENDING_REVIEW: submit()
     PENDING_REVIEW --> APPROVED: review(approved=True)
     PENDING_REVIEW --> REJECTED: review(approved=False)
     APPROVED --> PUBLISHED: IndexRun 激活时
+    DRAFT --> WITHDRAWN: withdraw()
+    PENDING_REVIEW --> WITHDRAWN: withdraw()
+    APPROVED --> WITHDRAWN: withdraw()
     REJECTED --> [*]
+    WITHDRAWN --> [*]
     PUBLISHED --> [*]
 ```
+
+> `WITHDRAWN` 是较新加入的终态（详见本章「撤回修订与唯一变更槽位」）：首次入库元数据
+> （`source_type='PARSE_EXTRACTED'`）不能走这条边，只能被 `review(approved=False)` 驳回。
 
 代码在 `backend/knowledge/metadata_service.py`：
 
 | 方法           | 行号     | 关键规则                                                                                                                   |
 | -------------- | -------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `create_draft` | L200-242 | 首份 INITIAL 草稿采用上传时的 `initial_document_status` 声明（L207-211），后续修订**始终继承已审核元数据**，不再看上传声明 |
-| `update_draft` | L244-262 | 只有 `DRAFT` 可改；字段白名单 `REVISION_EDIT_FIELDS`（L22）                                                                |
-| `submit`       | L264-279 | 四个必填：制度名称、发布机构、责任部门、发布日期（L268-275）                                                               |
-| `review`       | L281-314 | 通过则写 `policy_document.approved_metadata_revision_id`（L306-313）；驳回**必须填原因**（L294-295）                       |
+| `ensure_draft` | L156-288 | **幂等**：已有草稿直接返回，否则从 active/最新元数据复制。首份 INITIAL 草稿采用上传时的 `initial_document_status` 声明，后续修订**始终继承已审核元数据** |
+| `update_draft` | L290-322 | 只有 `DRAFT` 可改；字段白名单 `REVISION_EDIT_FIELDS`（L24）                                                                |
+| `submit`       | L324-340 | 四个必填：制度名称、发布机构、责任部门、发布日期（L328-335）                                                               |
+| `review`       | L342-378 | 通过则写 `policy_document.approved_metadata_revision_id`；驳回**必须填原因**                       |
+| `withdraw`     | L379-413 | 撤回未发布修订，回退 approved 指针；`PARSE_EXTRACTED` 不可撤回；幂等                               |
 
-**`submit()` 里最容易被问到的一条规则**（L276-278）：
+> **方法名已变**：早期版本叫 `create_draft`，现为 `ensure_draft`——语义从「新建」变成「取或建」，
+> 因此重复点击「新建修订」不会产生多份草稿。
+
+**`submit()` 里最容易被问到的一条规则**（L336-338）：
 
 ```python
 status = str(revision.get("status") or "unknown").strip().lower()
@@ -429,14 +455,103 @@ if status == "unknown" and not str(revision.get("status_confirmation_note") or "
 
 这解释了为什么库里会有一堆 `status='unknown'` 的制度：**解析器不猜制度是否生效**，默认就是 `unknown`；要变成 `effective` 只有两条路——上传时显式声明，或人工在修订里确认。系统允许你保留 `unknown`，但**必须写下为什么保留**，不让「不知道」悄悄溜过去。
 
+### 废止与失效：生命周期动作与制度状态强绑定
+
+`REPEAL`（登记废止）和 `EXPIRY`（登记失效）不是普通元数据修订，二者各自独立审核和留痕。
+对应关系集中定义在 `backend/knowledge/metadata_rules.py`，**不散落在各处判断**：
+
+| `source_type` | 必须写入的 `status` | 界面标签 |
+| --- | --- | --- |
+| `REPEAL` | `repealed` | 登记废止 |
+| `EXPIRY` | `expired` | 登记失效 |
+
+`status_transition_error()` 在**创建草稿、保存、提交**三处反复校验，动作与状态不一致就直接报错，
+不允许「登记废止」却留着 `effective` 状态。
+
+`ensure_draft` 对这两个动作有两道**前置守卫**（L176-182）：
+
+1. 必须已有 `active_metadata_revision_id`——即制度**已正式发布**，否则「制度尚未正式发布，不能登记废止或失效」；
+2. 该 active 修订的状态必须是 `effective`——只有现行有效制度能被废止/失效。
+
+另外它还会自动归正草稿：状态与 `source_type` 不符时强制改写为 `required_status`（L226-230），
+`REPEAL` 未填废止日期时默认填当天（L231-232）并允许人工改。
+
+`submit` 和 `review` 都会调用 `_validate_lifecycle_revision(require_details=True)`（L339、L358 → 定义在 L415）
+再要求填全细节：`REPEAL` 必须有废止日期、原因、依据；`EXPIRY` 必须有失效日期和说明，日期还要过 ISO 格式校验。
+
+> **前端已对齐这两道守卫**（`frontend/src/pages/admin/KnowledgeGovernancePage.tsx:272-274`）：
+> 「登记废止」「登记失效」按钮只在 `activeRevision.status === 'effective'` 且当前没有
+> `DRAFT`/`PENDING_REVIEW`/`APPROVED` 在途修订时才渲染，所以正常操作路径下用户碰不到后端那两道拒绝。
+> 后端守卫是最终防线（防直接调 API），前端条件渲染负责不让用户走到一半才被拒——两侧规则一致，
+> 改动其中一侧时必须同步另一侧。
+
+### 撤回修订与「唯一变更槽位」
+
+> **状态**：本节对应工作区中**尚未提交**的实现（migration `0008_metadata_change_open_slot` 及
+> `withdraw` 相关改动），提交后本注记可删除。
+
+之前一份制度可能同时挂着多条未完成的元数据修订，导致「该发布哪一条」无法判断。现在用
+**数据库唯一约束**把这件事收紧，而不是靠应用层自觉检查。
+
+**槽位机制**（`0008_metadata_change_open_slot`）：`metadata_change_request` 新增
+`open_slot` 列，配合 `UniqueConstraint("document_id", "open_slot")`：
+
+| 请求状态 | `open_slot` | 效果 |
+| --- | --- | --- |
+| `DRAFT` / `PENDING_REVIEW` / `APPROVED` | `'OPEN'` | 占用槽位，同一制度只能有一条 |
+| `PUBLISHED` / `REJECTED` / `WITHDRAWN` | `NULL` | 释放槽位，可保留任意多条历史 |
+
+这里用到了 SQLite「`NULL` 不参与唯一性比较」的特性：终态请求写 `NULL` 就能共存，
+而 `'OPEN'` 全局每制度只允许一条。**约束在数据库层，并发下也不会漏。**
+
+槽位的释放点有两个：撤回时由 `withdraw` 置 `NULL`；正常发布时由 Worker 在 Alias 切换成功后
+连同 `status='PUBLISHED'` 一起置 `NULL`（`worker.py:293`）——**即槽位跟随「是否真正落地」而非「是否审核通过」**。
+
+应用层再补三处显式检查（`app/application/metadata_service.py`），目的是给出可读错误而不是撞裸约束：
+
+1. `_ensure_request`（L276）创建前查 `_open_requests`（L256）：已有在途请求时，只有「唯一一条且是
+   `DRAFT` 且类型相同」才允许复用，否则报「请先完成或撤回该修订」；
+2. `submit`（L154）提交前排除自己再查一遍，防止并发下两条同时进入待审；
+3. `review`（L168）通过前检查同制度是否已有其他 `APPROVED`，避免出现两条都等待发布。
+
+**撤回链路**：`POST /api/v1/admin/knowledge/documents/{document_id}/metadata/{revision_id}/withdraw`
+（`admin.py:521`，需 `knowledge.metadata.manage` 权限 + CSRF，请求体必填 `reason`）
+
+```
+withdraw_metadata_revision (admin.py:521)
+  └─ MetadataApplicationService.withdraw (app/application/metadata_service.py:215)
+       ├─ KnowledgeMetadataService.withdraw (knowledge/metadata_service.py:379)
+       │    ├─ lifecycle_status → 'WITHDRAWN'
+       │    └─ 若该修订正是 approved 指针，回退到 active_metadata_revision_id
+       ├─ request.status='WITHDRAWN'、open_slot=None（释放槽位）
+       └─ 写 ReviewRecord(outcome='WITHDRAWN', comment=撤回原因)
+```
+
+两条**不可撤回**的规则，两层都拦：
+
+- 只有 `DRAFT`/`PENDING_REVIEW`/`APPROVED` 可撤回，已发布的不行；
+- **首次入库元数据不能撤回**——知识层看 `source_type == 'PARSE_EXTRACTED'`，平台层看
+  `request_type == 'INITIAL' or job_id is not None`。首份元数据只能在审核流程里驳回，
+  否则文档会退化成「已入库但没有任何元数据」的悬空状态。
+
+> **`approved` 指针回退是容易漏的一步**：如果撤回的修订正好是
+> `policy_document.approved_metadata_revision_id`，直接置空会让制度失去待发布基线。
+> 实现是回退到 `active_metadata_revision_id`（当前对外生效的那一份），保证指针始终有意义。
+
+撤回是**幂等**的：对已 `WITHDRAWN` 的修订再次调用直接返回当前状态，不重复写审计。
+
+`WITHDRAWN` 同时接入了治理页：状态筛选和排序新增该项（优先级排在 `PUBLISHED` 之前、
+`APPROVED` 之后），修订历史显示「已撤回」，且撤回后 `canCreateRevision` 允许重新建正确修订。
+前端撤回按钮走 `Modal.confirm` 强制填原因（`KnowledgeGovernancePage.tsx:237`）。
+
 ### 三个元数据指针的区别
 
 `policy_document` 上有三个元数据指针，含义完全不同，别混：
 
 | 字段                            | 含义                   | 谁写                                |
 | ------------------------------- | ---------------------- | ----------------------------------- |
-| `latest_metadata_revision_id`   | 最新草稿（可能还没审） | `create_draft` (L238-241)           |
-| `approved_metadata_revision_id` | 已审核通过、等待发布   | `review` (L306-313)                 |
+| `latest_metadata_revision_id`   | 最新草稿（可能还没审） | `ensure_draft` (L285)               |
+| `approved_metadata_revision_id` | 已审核通过、等待发布   | `review` (L373)                     |
 | `active_metadata_revision_id`   | **当前对外生效**       | `indexing/database.py:activate_run` |
 
 **对外展示读的是 `active_`**（见 `metadata_service.py` 文件头注释：「公开读取始终使用 active IndexRun 冻结的 metadata_revision_id」）。所以元数据审核通过后前台还没变，是正常的——要等索引发布。
@@ -615,23 +730,28 @@ unmapped_node_count == 0
 
 ```
 管理员选定 1~20 个制度
-  → publication_service.py:create (L21)      建 IndexPublicationRequest，status=BUILD_QUEUED
-  → worker.py:run_once (L42-46)              优先处理发布请求，优先级高于普通入库任务
-  → worker.py:run_publication (L100-117)     status=BUILDING，相关 job 转 INDEXING
-  → management.build_index_run(required_document_ids=[...])
-  → indexer.py:build (L78-132)
+  → publication_service.py:create (L38)      冻结来源并建 IndexPublicationRequest，status=BUILD_QUEUED
+  → worker.py:run_once (L74)                 优先处理发布请求，优先级高于普通入库任务
+  → worker.py:run_publication (L161)         status=BUILDING，相关 job 转 INDEXING
+  → management.build_index_run(frozen_sources=[...])   ← 传冻结清单，不是「当前就绪文档」
+  → indexer.py:build (L78-137)
 ```
 
-注意 `run_once` L42-46：**发布请求优先级高于普通入库任务**。Worker 每轮先看有没有 `BUILD_QUEUED`/`PUBLISH_QUEUED` 的发布请求，有就先干这个。
+注意 `run_once`：**发布请求优先级高于普通入库任务**。Worker 每轮先看有没有 `BUILD_QUEUED`/`PUBLISH_QUEUED` 的发布请求，有就先干这个。
 
-`publication_service.py:create`（L21-24）限制**一次发布 1~20 个制度**。
+`publication_service.py:create`（L42-43）限制**一次发布 1~20 个制度**，并且（L44-50）**全局只允许一个未完成发布请求**存在。
 
-### `PolicyIndexer.build()` 的十步（L78-132）
+> **关键：构建取数依据是「冻结清单」而非「当前就绪」。** 创建发布请求时就把来源版本钉死了，
+> 详见第 11 章「发布来源冻结（`exact_snapshot_v2`）」。
+
+### `PolicyIndexer.build()` 的十步（L78-137）
 
 ```
 1.  get_or_create_profile(profile_name, alias_name)      拿到 index_profile
 2.  _reconcile_switching_run(profile_id)                 修复上次崩在 switching 中间的 run
-3.  freeze_active_sources(required_document_ids)          冻结所有 active ChunkRun 快照
+3.  冻结来源（L91-95，二选一分支）：
+      frozen_sources 非空 → freeze_exact_sources(frozen_sources)   ← 发布链路走这条
+      否则                → freeze_active_sources(required_document_ids)  ← CLI/兜底
 4.  source_manifest_hash(sources)                        算来源清单哈希
 5.  collection_name(manifest_hash, contract_hash)        推导物理 collection 名
 6.  find_run(profile_id, manifest_hash, contract_hash, config_hash)   四元组幂等查重
@@ -642,6 +762,9 @@ unmapped_node_count == 0
 ```
 
 第 6 步的四元组（来源清单 + 向量契约 + 索引配置 + profile）完全一致就复用旧 run，一个字节都不重算。
+
+> **第 3 步的分支容易看漏**：Web 发布链路**永远**走 `freeze_exact_sources`（Worker 传了
+> `frozen_sources`），`freeze_active_sources` 只在 CLI 直接构建时才生效。早期文档只写了后者。
 
 ### 命名规则：collection 与 alias
 
@@ -777,20 +900,55 @@ if self.config.strict_source_freshness and not self.db.sources_are_current(run_i
 
 ## 11. 阶段九：发布（第四个人工卡点，Alias 切换是唯一发布时点）
 
+### 发布来源冻结（`exact_snapshot_v2`）
+
+> **本节由 `fix: p0-4`（0005）与 `fix2`（0006）引入，早期版本的触发链没有这一层。**
+> 完整规则见 [`docs/PHASE2_PUBLICATION_CONSISTENCY_2026-09-04.md`](PHASE2_PUBLICATION_CONSISTENCY_2026-09-04.md)，此处只讲代码落点。
+
+发布之所以「可预期」，核心是：**创建发布请求的那一刻就把来源版本钉死，构建时只按这份冻结清单取数，不再扫描「当前就绪文档」。**
+
+`publication_service.py:create`（L104-137）冻结逻辑：
+
+1. 取当前 active IndexRun 的完整来源作为 **BASELINE**（`active_index_snapshot()`，`management.py:200`）；
+2. 本次选中的、且有 `APPROVED` 元数据修订的文档，覆盖为 **CHANGE**（记 `metadata_revision_id` 和首次入库 `job_id`）；
+3. 全部写入 `index_publication_source` 表（migration `0005_index_publication_job` 建表、`0006_exact_publication_snapshot` 加 `snapshot_contract_version` 等字段），契约版本 `exact_snapshot_v2`。
+
+`create` 阶段的几道拒绝（都抛 `JobConflictError`）：
+
+| 触发条件 | 代码 |
+| --- | --- |
+| 已有未完成发布请求（全局单例） | L44-50 |
+| 某文档有多个待发布元数据修订 | L63-64 |
+| 绑定 Job 处于 `FAILED` 或非 `READY_FOR_INDEX/INDEX_QUEUED` | L82-90 |
+| Job 的 parse/chunk run 与知识侧 active Run 不一致 | L95-99 |
+
+**Worker 构建时的双向核验**（`worker.py:run_publication`，`BUILD_QUEUED` 分支）：
+
+1. L172-176：基线校验——若 active IndexRun 已不是创建时的 `base_index_run_id`，直接失败，要求重建请求；
+2. L177-184：绑定 Job 必须都处于 `INDEX_QUEUED`，否则「绑定任务状态不一致」——**杜绝其他失败任务搭车上线**；
+3. L205：把冻结清单作为 `frozen_sources` 传给 `build_index_run`；
+4. L211-233：构建完成后，把实际 `index_run_source` 与冻结集合做**双向比较**——缺少、额外、或 `(parse_run, chunk_run, metadata_revision)` 三元组不一致，任一都失败，绝不进入确认发布。
+
+只有上述全过，请求才停在 `READY_TO_PUBLISH` 等待管理员确认。
+
 ### 触发链
 
 ```
 管理员在治理页确认发布
-  → publication_service.py:queue_publish (L68-71)   校验 status==READY_TO_PUBLISH 且有 index_run_id
+  → publication_service.py:queue_publish (L203)     校验 status==READY_TO_PUBLISH 且有 index_run_id
                                                      → status=PUBLISH_QUEUED
-  → worker.py:run_publication (L119-145)
+  → worker.py:run_publication (L161)  第二次进入（status 已是 READY_TO_PUBLISH）
     → job 转 PUBLISH_QUEUED → PUBLISHING
     → management.publish_index_run(index_run_id)
-      → indexer.py:_activate (L301-316)
-    → publication.status=PUBLISHED，job 转 PUBLISHED
+      → indexer.py:_activate (L306-330)
+    → publication.status=PUBLISHED，job 转 PUBLISHED，绑定 APPROVED 变更转 PUBLISHED 并释放 open_slot
 ```
 
-### `_activate()` 的顺序（L301-316）
+> **`run_publication` 会被调用两次**：第一次 `BUILD_QUEUED` 负责构建 + 全量核验并停在
+> `READY_TO_PUBLISH`（L177-251），第二次才做 Alias 切换正式发布（L253-302）。构建和发布是
+> 两个独立的 Worker 轮次，中间夹着管理员在治理页的确认动作。
+
+### `_activate()` 的顺序（L306-330）
 
 ```
 1. run.status 必须是 'succeeded'                          否则 ValueError
@@ -801,7 +959,7 @@ if self.config.strict_source_freshness and not self.db.sources_are_current(run_i
 6. db.activate_run(profile_id, run_id)                    ← SQLite 侧切指针
 ```
 
-**顺序不能颠倒**。第 3 步先写 `switching` 是为了留下崩溃痕迹：如果进程在第 4、5 步之间挂掉，下次 `build()` 开头的 `_reconcile_switching_run`（L325-339）会读 Qdrant 实际 alias 指向来对账：
+**顺序不能颠倒**。第 3 步先写 `switching` 是为了留下崩溃痕迹：如果进程在第 4、5 步之间挂掉，下次 `build()` 开头的 `_reconcile_switching_run`（`indexer.py:330`）会读 Qdrant 实际 alias 指向来对账：
 
 ```
 alias 已指向该 collection 且 status=succeeded  →  补做 db.activate_run
@@ -810,7 +968,7 @@ alias 未指向该 collection                      →  activation_status 回退
 
 **以 Qdrant 的实际状态为准**修复 SQLite。这是标准的最终一致性对账。
 
-### `db.activate_run()` 做的三件事（`indexing/database.py:590-679`）
+### `db.activate_run()` 做的三件事（`indexing/database.py:716-806`）
 
 这是「active IndexRun」这个概念真正落地的地方：
 
@@ -818,7 +976,7 @@ alias 未指向该 collection                      →  activation_status 回退
 
 **2. 旧 run 让位**：同 profile 下其他 run 置 `activation_status='superseded'`。**同一时刻全局只有一个 active IndexRun。**
 
-**3. 元数据正式发布**（L645-679）：把本次纳入的每份文档的 `approved_metadata_revision_id` 对应修订置 `lifecycle_status='PUBLISHED'`，**回写 14 个元数据字段到 `policy_document`**，同时置 `active_metadata_revision_id`。
+**3. 元数据正式发布**（L767-806）：把本次纳入的每份文档的 `approved_metadata_revision_id` 对应修订置 `lifecycle_status='PUBLISHED'`，**回写 14 个元数据字段到 `policy_document`**，同时置 `active_metadata_revision_id`。
 
 第 3 点解释了第 7 章那个悬念：**元数据审核通过后前台不变，要等这一刻**。「审核通过」只是候选，「索引发布」才是生效。
 
@@ -833,7 +991,7 @@ alias 未指向该 collection                      →  activation_status 回退
    查询侧 contract_hash == active IndexRun 的 embedding_contract_hash
    Qdrant alias 实际指向 == active IndexRun 的 collection_name
    ```
-   无 active run 时 `active_context()`（`database.py:681-694`）直接抛 `ValueError`。
+   无 active run 时 `active_context()`（`database.py:807`）直接抛 `ValueError`。
 2. **决定哪些制度可见**。`read_service.py:233`、`:277`、`:314` 三处都 `JOIN index_run_source`。**没进 active IndexRun 的制度，Platform 侧完全查不到**——不是「查到但空」，是「不存在」。
 3. **元数据发布的触发点**（上面第 3 件事）。
 
@@ -841,7 +999,7 @@ alias 未指向该 collection                      →  activation_status 回退
 
 ### 失败处理
 
-`worker.py:run_publication` 的 except（L146-158）：`publication.status='FAILED'`，相关 job 转 `FAILED` 并置 `retryable=True`。`publication_service.py:retry`（L78-81）允许重试失败的发布请求。
+`worker.py:run_publication` 的 except（L303-322）：`publication.status='FAILED'`，处于 `INDEXING`/`PUBLISHING` 的相关 job 转 `FAILED` 并置 `retryable=True`。`publication_service.py:retry`（L214）允许**重试原发布请求**（不新建语义相同的请求）。
 
 **关键**：失败时 alias 没切，旧 active IndexRun 完好无损，线上检索毫无影响。
 
@@ -855,10 +1013,14 @@ alias 未指向该 collection                      →  activation_status 回退
 
 ```
 ChatPage.tsx（frontend/src/pages/ChatPage.tsx）
-  └─ POST /api/v1/chat/sessions/{session_id}/messages   （chat.py:72-86 send_message）
-       └─ ChatService.send_message（chat_service.py:130-187）
-             └─ KnowledgeService.query（knowledge/service.py）→ 专用线程中的 RagRuntime.query
+  └─ POST /api/v1/chat/sessions/{session_id}/messages   （chat.py:90 send_message）
+       └─ ChatService.send_message（chat_service.py:158）
+             ├─ QueryScopeResolver.resolve（query_scope_service.py:109）→ 算出本次可查 document_id 集合
+             └─ KnowledgeService.query（knowledge/service.py:78）→ 专用线程中的 RagRuntime.query
 ```
+
+另有一个只读端点供前端判断范围是否可用：`GET /api/v1/chat/query-capabilities`
+（`chat.py:29 query_capabilities`），返回 active IndexRun 及现行/历史两类可查制度计数。
 
 `ChatService.send_message` 六步：
 
@@ -869,7 +1031,7 @@ ChatPage.tsx（frontend/src/pages/ChatPage.tsx）
 5. 更新会话 `updated_at`、`message_count`；
 6. 写 `platform_audit_log`。
 
-**失败路径值得单独记住**（`chat_service.py:150-166`）：
+**失败路径值得单独记住**（`chat_service.py:199`）：
 
 ```python
 except KnowledgeServiceError as exc:
@@ -885,7 +1047,81 @@ except KnowledgeServiceError as exc:
 > 当前正式边界由 ADR-0004 冻结：Platform 不启动或调用 8010。首次 Web 问答时，
 > `KnowledgeService` 才惰性初始化Runtime；外部Qdrant或模型服务不可用时返回稳定错误。
 
-### 12.2 统一 RAG Pipeline（`knowledge/rag/pipeline.py`）
+### 12.2 查询范围解析（`app/application/query_scope_service.py`）
+
+**这是问答链路里最容易被忽略、但决定「能查到什么」的一层。** RAG 不处理用户身份和权限，
+所以在调用 Runtime 之前，Platform 必须先把「谁、能查哪些制度、什么状态」收敛成一个确定的
+`document_id` 集合。
+
+三个概念要分清：
+
+| 概念 | 类型 | 含义 |
+| --- | --- | --- |
+| `user_selection_mode` | `ALL` / `SELECTED` | 用户在界面上主动选了没选 |
+| `rag_document_scope_mode` | `ALL` / `SELECTED` | 最终传给 Runtime 的模式 |
+| `DocumentAccessDecision.mode` | `UNRESTRICTED` / `RESTRICTED` | 权限层结论 |
+
+**`UNRESTRICTED` 与「空集合」语义完全不同**（`query_scope_service.py:16`）。当前实现
+`OpenDocumentAccessResolver`（L32-46）只看一个权限位：没有 `knowledge.document.read` 就返回
+`RESTRICTED` + 空集合；有则返回 `UNRESTRICTED`。注意 `UNRESTRICTED` 时 `document_ids` 也是空
+`frozenset`，此时空集合表示「不限制」而非「什么都不能查」——`allows()`（L22-23）靠 `mode` 短路判断。
+
+`QueryScopeResolver.resolve`（L109-192）的收敛顺序：
+
+1. 取 `catalog.queryable_index_snapshot()`（`catalog.py:245`）拿到 active IndexRun 及其全部来源文档；
+2. 按 `query_scope` 映射状态白名单（L84-87）：`CURRENT → {effective}`，`HISTORICAL → {repealed, expired}`；
+3. `SELECTED` 分支逐项校验（详见下表），`ALL` 分支则取「状态白名单 ∩ 可访问」的交集（L152-158）；
+4. 结果为空则报错，**绝不回退到全库**（L161-166）；
+5. 计算 `scope_hash`：把 6 个范围字段按 `sort_keys` 序列化后取 SHA-256（L168-183）。
+
+范围收敛过程中的五种拒绝，全部是稳定错误码：
+
+| 错误码 | HTTP | 触发条件 |
+| --- | --- | --- |
+| `DOCUMENT_SCOPE_FORBIDDEN` | 403 | 选了当前用户不可访问的制度 |
+| `DOCUMENT_NOT_QUERYABLE` | 409 | 选的制度不在 active IndexRun 里 |
+| `DOCUMENT_SCOPE_STATUS_MISMATCH` | 409 | 制度状态与 `CURRENT/HISTORICAL` 不符 |
+| `NO_QUERYABLE_DOCUMENTS` | 409 | 收敛后集合为空（`ALL` 分支同样适用） |
+| `QUERY_INDEX_UNAVAILABLE` | 503 | 根本没有 active IndexRun（L194-204 把底层 `RuntimeError` 转成业务错误） |
+
+> **一个容易踩的点**：`ALL` 分支下 `rag_document_scope_mode` 不一定是 `ALL`。看 L159——
+> 只有 `access.mode == "UNRESTRICTED"` 才传 `ALL`；受限用户即使没主动选制度，也会被降级成
+> `SELECTED` 并附上显式 ID 列表。这样 RAG 侧永远不需要知道权限规则。
+
+### 12.3 Citation 响应后复核（三层）
+
+Runtime 返回结果后，`ChatService._validate_citation_scope`（`chat_service.py:385-442`）还要再查三遍，
+**不信任上游自证**：
+
+| 层 | 检查 | 错误码 | HTTP | 可重试 |
+| --- | --- | --- | --- | --- |
+| 1 | 响应里所有 `index_run_id` 是否都等于解析时的那一个 | `RAG_INDEX_SCOPE_MISMATCH` | 503 | 是 |
+| 2 | Citation 的制度状态是否落在允许状态内 | `RAG_SCOPE_MISMATCH` | 502 | 否 |
+| 3 | Citation 的 `document_id` 是否都在授权集合内 | `RAG_DOCUMENT_SCOPE_MISMATCH` | 502 | 否 |
+
+第 1 层是**防 Alias 中途切换**：查询期间若发布流程切了 Alias，就会出现混合快照，此时宁可让用户
+重试，也不返回跨版本拼接的答案。第 2 层的状态比较做了中英文归一（L404-408，`现行有效`/`已废止`/`已失效`
+都会被折叠成英文值），避免因文案差异误判。
+
+### 12.4 每轮问答持久化的范围快照
+
+`chat_message` 在 migration `0007_chat_document_scope` 中新增了 7 个字段，由
+`_scope_fields`（`chat_service.py:445-463`）写入：
+
+| 字段 | 含义 |
+| --- | --- |
+| `document_selection_mode` | 用户是否主动选择 |
+| `selected_document_ids_json` | 用户选的 ID；`ALL` 时显式写 `[]` |
+| `resolved_document_scope_mode` | 最终传给 Runtime 的模式 |
+| `query_index_run_id` | 本轮锁定的 active IndexRun |
+| `access_scope_version` | 权限策略版本（当前 `document_access_open_v1`） |
+| `access_scope_hash` | 范围指纹，用于事后复现 |
+| `access_scope_count` | 授权集合大小 |
+
+> **迁移策略**：0007 给全部字段设了 `server_default`，历史消息被**显式**迁移为 `ALL` 范围，
+> 而不是留 `NULL` 让读取方猜语义——这与全项目「不用 `NULL` 表达业务含义」的一贯做法一致。
+
+### 12.5 统一 RAG Pipeline（`knowledge/rag/pipeline.py`）
 
 该Pipeline同时由离线CLI和Platform进程内Runtime复用。应用层只接收经
 `public_query_response` 校验的 `rag_api_v1_1` 公开结果。
@@ -987,7 +1223,7 @@ PromptContract 构造 messages（带 `prompt_version` / `prompt_hash` 审计）�
 
 > 文件头注释一句话概括原则：**「任何校验失败都保守降级为证据不足。」** 宁可回答「查不到」，也不输出没有证据支撑的结论。
 
-### 12.3 引用为什么不会被模型编造，也不会漂移
+### 12.6 引用为什么不会被模型编造，也不会漂移
 
 这是整条链路里最关键的两个结构性保证：
 
@@ -1021,7 +1257,7 @@ return "ev_" + sha256_text(canonical_json(payload))[:32]
 
 另外 `safe_source_reference`（`citation.py:42-55`）把源文件路径截断到 `source_documents/` 以下，**不向前端泄露服务器绝对路径**。
 
-### 12.4 平台侧引用快照
+### 12.7 平台侧引用快照
 
 `chat_service` 把每条引用落进 `message_citation`（`models.py:159`），保存公开字段 + `document_id` + `primary_node_id` + 各类 run ID + 证据快照 hash。冲突落 `message_conflict`（L188）/ `conflict_position`（L199）。
 
@@ -1278,7 +1514,20 @@ cd d:\2-code\policy-platform\frontend; pnpm dev
 .\scripts\dev-frontend.ps1    # 前端
 ```
 
-**前置依赖**：Qdrant 必须已在 `http://127.0.0.1:6333` 运行；Embedding / Rerank / Generator 三个模型服务按 `.env` 里的地址可达。
+**前置依赖**（ADR-0004 后归属已变化，注意区分）：
+
+| 依赖 | 谁需要它 | 不满足的后果 |
+| --- | --- | --- |
+| Qdrant `http://127.0.0.1:6333` | Worker 索引阶段 + 问答检索 | 索引构建失败；问答首次初始化 Runtime 时失败 |
+| Embedding 服务 | Worker 索引阶段 + 问答检索 | 同上 |
+| Reranker / Generator 服务 | 仅问答 | 入库全流程不受影响，只有问答失败 |
+
+**不需要启动原 `D:\2-code\rag` 的 8010**。ADR-0004 后 Runtime 在 Platform 进程内，上述外部依赖由
+`KnowledgeService` 直接调用，不经 8010 中转。
+
+> **惰性初始化的好处**：`KnowledgeService` 只在**首次问答**时才创建 Runtime（`service.py`
+> `_query_in_worker`）。所以 Qdrant 和模型服务全挂着也能正常启动后端、登录、上传文档、跑审核和浏览制度目录，
+> 只有问答会返回稳定错误。调试入库链路时不必先把模型服务拉起来。
 
 `worker.py` 只有两个参数（`worker.py:162-165`）：`--once`、`--poll-seconds`（默认 2.0）。**worker_id 不可指定**，自动取 `f"local-worker-{os.getpid()}"`（L166）——这也意味着重启 Worker 后 lease 持有者会变，旧 lease 靠 10 分钟超时自然失效。
 

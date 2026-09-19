@@ -83,6 +83,12 @@ class MetadataReviewRequest(BaseModel):
     comment: str | None = Field(default=None, max_length=2000)
 
 
+class MetadataWithdrawRequest(BaseModel):
+    """撤回未发布人工修订时必须保留明确原因。"""
+
+    reason: str = Field(min_length=1, max_length=2000)
+
+
 class PolicySeriesAssignRequest(BaseModel):
     series_id: int | None = Field(default=None, ge=1)
     canonical_title: str | None = Field(default=None, max_length=500)

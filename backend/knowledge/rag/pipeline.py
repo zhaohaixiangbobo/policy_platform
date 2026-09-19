@@ -20,6 +20,7 @@ from .generator import GeneratorResponse
 from .models import AnswerStatus, ContextBundle
 from .prompt import PromptContract, messages_hash
 from .quality_gate import AnswerQualityGate
+from ..telemetry import event, timed
 
 
 class TwoStageRetriever(Protocol):
@@ -76,6 +77,10 @@ class RagResponse:
             "status": self.answer.status.value,
             "answerable": self.answer.answerable,
             "answer": self.answer.answer,
+            "answerability": self.answer.answerability,
+            "reason_code": self.answer.reason_code,
+            "missing_fields": list(self.answer.missing_fields),
+            "clarification_question": self.answer.clarification_question,
             "citation_labels": list(self.answer.citations),
             "citations": list(self.citation_records),
             "conflicts": [asdict(item) for item in self.answer.conflicts],
@@ -117,6 +122,7 @@ class RagPipeline:
         self.quality_gate = quality_gate or AnswerQualityGate()
         self.config = config or RagPipelineConfig()
 
+    @timed("pipeline_total")
     def query(
         self, question: str, *, filters: Any = None, include_debug: bool = False
     ) -> RagResponse:
@@ -166,6 +172,7 @@ class RagPipeline:
                     parsed = self.parser.parse(response.content, registry)
                     break
                 except AnswerValidationError as exc:
+                    event("answer_validation_failed", attempt=validation_attempt, error_code=exc.code)
                     validation_failures.append(
                         {
                             "validation_attempt": validation_attempt,
@@ -194,6 +201,7 @@ class RagPipeline:
                 registry,
             )
         parsed = decision.answer
+        event("generation_summary", validation_attempts=len(generator_responses), transport_attempts=sum(item.attempts for item in generator_responses), verifier_attempts=decision.audit.verifier_attempts)
         quality_gate_audit = decision.audit.to_dict(include_debug=include_debug)
 
         llm_ms = (

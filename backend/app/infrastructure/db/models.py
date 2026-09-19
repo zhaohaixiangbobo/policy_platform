@@ -147,7 +147,14 @@ class ChatMessage(Base):
     context_config_hash: Mapped[str | None] = mapped_column(String(200))
     index_run_id: Mapped[int | None] = mapped_column(Integer)
     rewrite_used: Mapped[bool | None] = mapped_column(Boolean)
+    retrieval_query: Mapped[str | None] = mapped_column(Text)
+    rewrite_strategy_version: Mapped[str | None] = mapped_column(String(80))
+    conversation_context_json: Mapped[str | None] = mapped_column(Text)
     quality_gate_version: Mapped[str | None] = mapped_column(String(100))
+    answerability: Mapped[str | None] = mapped_column(String(20))
+    reason_code: Mapped[str | None] = mapped_column(String(80))
+    missing_fields_json: Mapped[str | None] = mapped_column(Text)
+    clarification_question: Mapped[str | None] = mapped_column(Text)
     quality_gate_status: Mapped[str | None] = mapped_column(String(40))
     quality_gate_semantic_verification: Mapped[str | None] = mapped_column(String(80))
     quality_gate_reason_codes: Mapped[str | None] = mapped_column(Text)
@@ -298,12 +305,17 @@ class MetadataChangeRequest(Base):
     job_id: Mapped[str | None] = mapped_column(ForeignKey("ingestion_job.id", ondelete="SET NULL"))
     request_type: Mapped[str] = mapped_column(String(30), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT")
+    # OPEN槽位让同一制度在草稿、待审核、待发布阶段最多存在一条变更链；终态写NULL。
+    open_slot: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("user_account.id", ondelete="RESTRICT"), nullable=False)
     reviewed_by: Mapped[str | None] = mapped_column(String(36))
     review_comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now)
-    __table_args__ = (Index("ix_metadata_change_status", "status", "updated_at"),)
+    __table_args__ = (
+        Index("ix_metadata_change_status", "status", "updated_at"),
+        UniqueConstraint("document_id", "open_slot", name="uq_metadata_change_document_open_slot"),
+    )
 
 
 class IndexPublicationRequest(Base):

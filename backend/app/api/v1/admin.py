@@ -21,7 +21,7 @@ from app.application.evidence_reference_validator import EvidenceReferenceValida
 from app.config import get_settings
 from app.infrastructure.db.models import IngestionArtifact, IngestionJob, IngestionJobEvent, PolicyRelation, ReviewRecord, SystemConfig, UserAccount
 from app.infrastructure.db.session import get_db_session
-from app.schemas.admin import BatchCreateRequest, EvidenceBindRequest, EvidenceReferenceResponse, IndexPublicationCreateRequest, IndexStatusResponse, IngestionJobResponse, JobListResponse, JobPublishRequest, JobRetryRequest, MetadataDraftCreateRequest, MetadataRevisionUpdateRequest, MetadataReviewRequest, ParseNodeCorrectionRequest, PolicySeriesAssignRequest, ProcessCreateRequest, ProcessGraphUpdateRequest, ProcessReviewerRequest, ProcessSummary, RelationCreateRequest, RelationReviewRequest, RelationSummary, ReviewArticleTitleDecisionRequest, ReviewBatchDecisionRequest, ReviewDecisionRequest, ReviewDetail, ReviewItemDecisionRequest, ReviewQueuePage
+from app.schemas.admin import BatchCreateRequest, EvidenceBindRequest, EvidenceReferenceResponse, IndexPublicationCreateRequest, IndexStatusResponse, IngestionJobResponse, JobListResponse, JobPublishRequest, JobRetryRequest, MetadataDraftCreateRequest, MetadataRevisionUpdateRequest, MetadataReviewRequest, MetadataWithdrawRequest, ParseNodeCorrectionRequest, PolicySeriesAssignRequest, ProcessCreateRequest, ProcessGraphUpdateRequest, ProcessReviewerRequest, ProcessSummary, RelationCreateRequest, RelationReviewRequest, RelationSummary, ReviewArticleTitleDecisionRequest, ReviewBatchDecisionRequest, ReviewDecisionRequest, ReviewDetail, ReviewItemDecisionRequest, ReviewQueuePage
 from knowledge.config import KnowledgePaths
 from knowledge.management import KnowledgeManagementService
 from knowledge.metadata_service import KnowledgeMetadataService, MetadataConflictError
@@ -510,6 +510,27 @@ def review_metadata_revision(document_id: int, revision_id: int, payload: Metada
         try:
             return MetadataApplicationService(session, knowledge, ingestion(session)).review(
                 document_id, revision_id, payload.approved, principal.user_id, payload.comment
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (MetadataConflictError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/knowledge/documents/{document_id}/metadata/{revision_id}/withdraw")
+def withdraw_metadata_revision(
+    document_id: int,
+    revision_id: int,
+    payload: MetadataWithdrawRequest,
+    session: Session = Depends(get_db_session),
+    principal: Principal = Depends(require_permission("knowledge.metadata.manage", csrf=True)),
+):
+    """撤回尚未发布的人工修订，释放该制度的唯一变更槽位。"""
+
+    with KnowledgeMetadataService(get_settings().knowledge_database_path) as knowledge:
+        try:
+            return MetadataApplicationService(session, knowledge, ingestion(session)).withdraw(
+                document_id, revision_id, principal.user_id, payload.reason
             )
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -1,6 +1,6 @@
 """文件说明：定义进程内 RAG 查询对 Platform 暴露的稳定结果、引用和错误结构。
 
-内部契约沿用rag_api_v1_1字段，保证应用层与知识Runtime之间及历史聊天快照的语义稳定；不暴露Prompt正文、
+新回答使用rag_api_v1_2，兼容读取rag_api_v1_1字段，保持历史聊天快照语义；不暴露Prompt正文、
 reasoning、检索分数、完整Node映射或服务器绝对路径。
 """
 
@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
+
+from .rag.models import REASON_CODES, MISSING_FIELDS
 
 class AllDocumentScope(BaseModel):
     """查询当前状态范围内的全部制度。"""
@@ -146,15 +148,19 @@ class ProvenanceResponse(BaseModel):
 
 
 class QueryResponse(BaseModel):
-    """与 rag_api_v1_1 对齐的离线兼容响应模型。"""
+    """v1_2公开结果与v1_1旧快照的兼容响应模型。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    contract_version: Literal["rag_api_v1_1"]
+    contract_version: Literal["rag_api_v1_1", "rag_api_v1_2"]
     request_id: str
     status: Literal["ANSWER", "INSUFFICIENT_EVIDENCE", "CONFLICT"]
     answerable: bool
     answer: str
+    answerability: Literal["SUFFICIENT", "PARTIAL", "NONE"] | None = None
+    reason_code: str | None = None
+    missing_fields: list[str] | None = None
+    clarification_question: str | None = None
     citations: list[CitationResponse]
     conflicts: list[ConflictResponse]
     warnings: list[str]
@@ -162,6 +168,17 @@ class QueryResponse(BaseModel):
     quality_gate: QualityGateResponse
     provenance: ProvenanceResponse
     latency_ms: LatencyResponse
+
+    @model_validator(mode="after")
+    def validate_answer_metadata(self) -> "QueryResponse":
+        """旧契约保留空字段，新契约必须完整携带可回答程度。"""
+        if self.contract_version == "rag_api_v1_2":
+            allowed = {"ANSWER": {"SUFFICIENT", "PARTIAL"}, "INSUFFICIENT_EVIDENCE": {"PARTIAL", "NONE"}, "CONFLICT": {"SUFFICIENT", "PARTIAL"}}
+            if self.answerability not in allowed[self.status] or self.reason_code not in REASON_CODES:
+                raise ValueError("v1_2答案状态或原因非法")
+            if self.missing_fields is None or any(field not in MISSING_FIELDS for field in self.missing_fields):
+                raise ValueError("v1_2必须携带合法missing_fields")
+        return self
 
 
 class ErrorDetail(BaseModel):
@@ -189,11 +206,15 @@ def public_query_response(result: Any, request_id: str) -> QueryResponse:
     quality_gate = value["quality_gate"]
     latency = value["latency_ms"]
     return QueryResponse(
-        contract_version="rag_api_v1_1",
+        contract_version="rag_api_v1_2",
         request_id=request_id,
         status=value["status"],
         answerable=bool(value["answerable"]),
         answer=str(value["answer"]),
+        answerability=value["answerability"],
+        reason_code=value["reason_code"],
+        missing_fields=value["missing_fields"],
+        clarification_question=value["clarification_question"],
         citations=[CitationResponse.model_validate(item) for item in value["citations"]],
         conflicts=[ConflictResponse.model_validate(item) for item in value["conflicts"]],
         warnings=[str(item) for item in value["warnings"]],

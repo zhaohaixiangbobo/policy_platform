@@ -15,9 +15,10 @@ from app.application.metadata_service import MetadataApplicationService
 from app.application.review_service import ReviewService
 from app.application.ingestion_service import IngestionService
 from app.infrastructure.db.base import Base
-from app.infrastructure.db.models import IngestionJob
+from app.infrastructure.db.models import IngestionJob, MetadataChangeRequest, ReviewRecord
 from knowledge.config import KnowledgePaths
 from knowledge.management import KnowledgeManagementService
+from knowledge.metadata_service import MetadataConflictError
 from knowledge.parser.database import ParserDatabase, utc_now
 from knowledge.parser.review import ReviewService as ParseReviewService
 
@@ -64,6 +65,35 @@ class _ReviewReader:
         }
 
 
+class _MetadataWriter:
+    """记录撤回调用，并确保冲突场景不会错误创建知识修订。"""
+
+    def __init__(self) -> None:
+        self.withdrawn: tuple[int, int] | None = None
+
+    def ensure_draft(self, *args, **kwargs):
+        raise AssertionError("存在OPEN变更时不应创建新知识修订")
+
+    def withdraw(self, document_id: int, revision_id: int) -> dict[str, object]:
+        self.withdrawn = (document_id, revision_id)
+        return {"id": revision_id, "document_id": document_id, "lifecycle_status": "WITHDRAWN"}
+
+
+class _WithdrawnLatestCatalog:
+    """模拟最新修订已撤回、active修订仍正式生效的制度。"""
+
+    def list_documents(self) -> list[dict[str, object]]:
+        return [{
+            "id": 11,
+            "title": "制度11",
+            "file_name": "policy-11.docx",
+            "latest_metadata_revision_id": 24,
+            "active_metadata_revision_id": 13,
+            "metadata_status": "WITHDRAWN",
+            "updated_at": "2026-09-14T00:00:00+00:00",
+        }]
+
+
 def test_governance_search_status_sort_and_fixed_page_size() -> None:
     session = _session()
     service = MetadataApplicationService(session, _DocumentCatalog(), None)  # type: ignore[arg-type]
@@ -79,6 +109,63 @@ def test_governance_search_status_sort_and_fixed_page_size() -> None:
     assert first_page["total"] == 12 and len(first_page["items"]) == 10
     assert first_page["items"][0]["id"] == 12
     assert [item["id"] for item in matched["items"]] == [12]
+    session.close()
+
+
+def test_metadata_open_slot_blocks_duplicate_and_withdrawal_releases_it() -> None:
+    """同一制度只有一条未完成变更，撤回后释放槽位并留下审核记录。"""
+
+    session = _session()
+    writer = _MetadataWriter()
+    request = MetadataChangeRequest(
+        document_id=11,
+        metadata_revision_id=24,
+        request_type="REPEAL",
+        status="APPROVED",
+        created_by="admin",
+    )
+    session.add(request)
+    session.commit()
+    service = MetadataApplicationService(session, writer, None)  # type: ignore[arg-type]
+
+    with pytest.raises(MetadataConflictError, match="未完成的元数据修订"):
+        service.create_draft(11, "admin", "CORRECTION", "重复修订")
+
+    result = service.withdraw(11, 24, "admin", "撤回错误测试修订")
+    session.refresh(request)
+    audit = session.query(ReviewRecord).filter_by(
+        target_type="METADATA_REVISION", target_id="24", outcome="WITHDRAWN"
+    ).one()
+
+    assert writer.withdrawn == (11, 24)
+    assert request.status == "WITHDRAWN" and request.open_slot is None
+    assert result["revision"]["lifecycle_status"] == "WITHDRAWN"
+    assert audit.comment == "撤回错误测试修订"
+    session.close()
+
+
+def test_governance_list_falls_back_to_active_request_after_withdrawal() -> None:
+    """撤回历史不覆盖主列表的当前快照生效状态。"""
+
+    session = _session()
+    session.add_all([
+        MetadataChangeRequest(
+            document_id=11, metadata_revision_id=13, request_type="INITIAL",
+            status="PUBLISHED", open_slot=None, created_by="admin",
+        ),
+        MetadataChangeRequest(
+            document_id=11, metadata_revision_id=24, request_type="REPEAL",
+            status="WITHDRAWN", open_slot=None, created_by="admin",
+        ),
+    ])
+    session.commit()
+
+    rows = MetadataApplicationService(
+        session, _WithdrawnLatestCatalog(), None  # type: ignore[arg-type]
+    ).list()
+
+    assert rows[0]["request_status"] == "PUBLISHED"
+    assert rows[0]["request_type"] == "INITIAL"
     session.close()
 
 

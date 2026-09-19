@@ -18,6 +18,7 @@ from knowledge.contracts import QueryResponse, public_query_response
 from knowledge.rag.generator import GeneratorContractError, GeneratorTransportError
 from knowledge.rag.runtime import RagRuntime, RagRuntimeSettings
 from knowledge.retrieval import SearchFilters
+from knowledge.telemetry import call, query_trace
 
 
 LOGGER = logging.getLogger("policy_platform.api.knowledge_query")
@@ -126,6 +127,7 @@ class KnowledgeService:
                 normalized_scope,
                 normalized_mode,
                 normalized_ids,
+                started,
             )
         except KnowledgeServiceError:
             raise
@@ -173,11 +175,17 @@ class KnowledgeService:
         query_scope: str,
         document_scope_mode: str,
         document_ids: tuple[int, ...],
+        queued_at: float,
     ) -> QueryResponse:
         """Runtime的创建、SQLite访问和资源释放均限定在专用线程。"""
 
+        with query_trace(request_id, queued_at):
+            return self._execute_query(question, request_id, query_scope, document_scope_mode, document_ids)
+
+    def _execute_query(self, question, request_id, query_scope, document_scope_mode, document_ids):
+        """线程内执行并对惰性初始化单独计时。"""
         if self._runtime is None:
-            self._runtime = self._runtime_factory(self._settings)
+            self._runtime = call("runtime_init", self._runtime_factory, self._settings)
         filters = SearchFilters(
             document_ids=document_ids if document_scope_mode == "SELECTED" else (),
             document_statuses=("effective",)

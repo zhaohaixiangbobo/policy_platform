@@ -22,6 +22,10 @@ class _InternalResult:
             "status": "INSUFFICIENT_EVIDENCE",
             "answerable": False,
             "answer": "现有证据不足。",
+            "answerability": "NONE",
+            "reason_code": "NO_RELEVANT_EVIDENCE",
+            "missing_fields": [],
+            "clarification_question": None,
             "citations": [],
             "conflicts": [],
             "warnings": [],
@@ -103,7 +107,7 @@ def test_in_process_query_uses_dedicated_thread_and_exact_filters(caplog) -> Non
     assert state["created_thread"] == state["query_thread"] == state["closed_thread"]
     assert state["query_thread"] != threading.get_ident()
     assert result.request_id == "engine-request-1"
-    assert result.contract_version == "rag_api_v1_1"
+    assert result.contract_version == "rag_api_v1_2"
     assert result.quality_gate.version == "answer_quality_gate_v2"
     assert "knowledge_query_completed" in caplog.text
     assert "不应进入日志的问题" not in caplog.text

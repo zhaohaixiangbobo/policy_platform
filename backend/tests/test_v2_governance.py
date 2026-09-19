@@ -491,3 +491,32 @@ def test_alias_failure_keeps_old_metadata_and_old_index_active() -> None:
         assert connection.execute("SELECT active_metadata_revision_id,title FROM policy_document WHERE id=1").fetchone() == (2, "新标题")
         assert connection.execute("SELECT lifecycle_status FROM document_metadata_revision WHERE id=1").fetchone()[0] == "SUPERSEDED"
         assert connection.execute("SELECT lifecycle_status FROM document_metadata_revision WHERE id=2").fetchone()[0] == "PUBLISHED"
+
+
+def test_unpublished_manual_revision_can_be_withdrawn() -> None:
+    """撤回只结束候选修订，不改变当前正式生效的元数据。"""
+
+    runtime_root = Path(os.environ["POLICY_TEST_RUNTIME_ROOT"]).resolve()
+    paths = KnowledgePaths(runtime_root / uuid4().hex / "knowledge")
+    KnowledgeManagementService(paths).initialize_empty_baseline()
+    document_id = _insert_reviewable_document(paths, "撤回测试制度", "withdraw-metadata")
+    active_revision_id = _publish_initial_metadata(paths, document_id)
+
+    with KnowledgeMetadataService(paths.database_path) as service:
+        draft = service.ensure_draft(
+            document_id, "admin", source_type="REPEAL", change_reason="测试登记废止"
+        )
+        revision_id = int(draft["id"])
+        service.update_draft(document_id, revision_id, {
+            "repeal_reason": "测试原因",
+            "repeal_evidence": "测试依据",
+        })
+        service.submit(document_id, revision_id)
+        service.review(document_id, revision_id, True, "reviewer", "审核通过")
+
+        withdrawn = service.withdraw(document_id, revision_id)
+        detail = service.detail(document_id)
+
+    assert withdrawn["lifecycle_status"] == "WITHDRAWN"
+    assert detail["document"]["active_metadata_revision_id"] == active_revision_id
+    assert detail["document"]["approved_metadata_revision_id"] == active_revision_id

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import logging
+from ..telemetry import call
 import time
 from typing import Sequence
 
@@ -69,7 +70,7 @@ class OpenAIEmbeddingClient:
                 attempt + 1, self.max_retries + 1, len(values),
             )
             try:
-                response = self.session.post(
+                response = call("embedding_http", self.session.post,
                     self.endpoint,
                     json=payload,
                     headers=self.headers,
@@ -104,7 +105,7 @@ class OpenAIEmbeddingClient:
                             attempt + 1, status_code, delay_seconds * 1000,
                             int((time.perf_counter() - attempt_started) * 1000), type(exc).__name__,
                         )
-                        time.sleep(delay_seconds)
+                        call("embedding_backoff", time.sleep, delay_seconds)
                         continue
                 break
         LOGGER.error(
