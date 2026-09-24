@@ -4,9 +4,12 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# POLICY_*由知识模块读取os.environ；外部注入变量始终优先于本机.env。
+load_dotenv(PROJECT_ROOT / ".env", override=False)
 DEFAULT_PLATFORM_DATABASE = PROJECT_ROOT / "var" / "platform.db"
 DEFAULT_KNOWLEDGE_DATA_ROOT = PROJECT_ROOT / "var" / "knowledge"
 
@@ -28,7 +31,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="PLATFORM_",
-        env_file=(".env", "../.env"),
+        env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )

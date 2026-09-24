@@ -42,6 +42,8 @@
 | 文档 | 状态 | 启动必读 | 权威范围 |
 |---|---|---:|---|
 | `docs/README.md` | CURRENT | 是 | 文档分类、阅读顺序和维护规则 |
+| [`deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md`](deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md) | CURRENT | 部署/索引维护必读 | docker_ready_v1、index_storage_retirement_v1；1—7存储已退役，保留8、9；双MySQL与Compose为下一阶段建议 |
+| [`deployment/container.env.example`](deployment/container.env.example) | REFERENCE | 容器准备时 | Linux环境模板；实际Compose尚未打包 |
 | [`RAG_QUALITY_EVOLUTION_PLAN.md`](RAG_QUALITY_EVOLUTION_PLAN.md) | IN_PROGRESS | 问答增强任务必读 | 方案1.3；S1—S3代码完成；S3相关34项测试及类型检查通过；真实模型/浏览器待验收；S4/S5未开始 |
 | [`../README.md`](../README.md) | CURRENT | 是 | 工程结构、工具链和快速启动 |
 | [`PROJECT_HANDOFF.md`](PROJECT_HANDOFF.md) | CURRENT | 是 | 当前工程状态、边界和交接约束 |
@@ -120,6 +122,8 @@
 | 部分 | 当前代码使用版本/行为 | 事实源 | 计划变化（尚未实施） |
 |---|---|---|---|
 | 应用架构 | ADR-0002 + ADR-0004；进程内KnowledgeService，无8010依赖 | [ADR-0004](decisions/ADR-0004-IN-PROCESS-RAG-QUERY.md) | 保持边界 |
+| 部署准备（2026-09-24） | docker_ready_v1；跨平台入口、外部配置、Linux依赖标记 | [部署准备](deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md) | 双MySQL、知识库SQLAlchemy/Alembic和Compose尚未实施 |
+| 索引存储生命周期（2026-09-24） | index_storage_retirement_v1；已退役1—7，保留8、9；复用检查物理存储 | [存储维护](deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md#3-旧索引复用和退役契约) | 受控恢复、孤儿清理和自动定期清理未实现 |
 | Platform HTTP接口 | /api/v1 | [API说明](api/PLATFORM_API_V1.md)、[OpenAPI](api/openapi.json) | S2增加公开回答字段 |
 | 知识结果契约 | rag_api_v1_2；兼容读取v1_1 | [contracts.py](../backend/knowledge/contracts.py) | S2已实现 |
 | 解析 | parser 0.1.4；article_title_v2 | [pipeline.py](../backend/knowledge/parser/pipeline.py) | 本方案不改解析 |

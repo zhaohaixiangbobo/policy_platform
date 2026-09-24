@@ -82,6 +82,22 @@ class QdrantVectorStore:
         )
         return result
 
+    def collection_exists(self, collection_name: str) -> bool:
+        """只检查物理存储，复用历史运行时绝不隐式创建空 collection。"""
+        return self._call("collection_exists", lambda: self.client.collection_exists(collection_name),
+                          collection_name=collection_name)
+
+    def alias_targets(self) -> set[str]:
+        """清理时保护全部 Alias，不只保护平台默认 Alias。"""
+        return {str(item.collection_name) for item in self._call("get_aliases", self.client.get_aliases).aliases}
+
+    def delete_collection(self, collection_name: str) -> None:
+        """由经过清单和引用校验的维护入口调用。"""
+        if collection_name in self.alias_targets():
+            raise ValueError("Alias 正在引用该 collection，禁止清理")
+        self._call("delete_collection", lambda: self.client.delete_collection(collection_name),
+                   collection_name=collection_name)
+
     def ensure_collection(
         self,
         collection_name: str,

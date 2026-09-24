@@ -22,6 +22,8 @@ class EmbeddingClient(Protocol):
 
 
 class VectorStore(Protocol):
+    def collection_exists(self, collection_name: str) -> bool: ...
+
     def ensure_collection(
         self, collection_name: str, *, vector_name: str, dimension: int, distance_metric: str
     ) -> None: ...
@@ -120,6 +122,7 @@ class PolicyIndexer:
             )
 
         run_id = int(run["id"])
+        self._assert_storage_available(run, require_collection=run["status"] == "succeeded")
         self.db.ensure_chunk_records(
             run_id,
             collection_name,
@@ -135,6 +138,20 @@ class PolicyIndexer:
         if activate:
             self._activate(int(profile["id"]), run_id)
         return self.summary(run_id, reused=run["status"] == "succeeded")
+
+    def _assert_storage_available(self, run: dict[str, Any], *, require_collection: bool = True) -> None:
+        """历史成功与物理可用分离；已清理运行必须显式恢复后才能再次使用。"""
+        retired = self.db.connection.execute(
+            "SELECT state FROM index_storage_retirement WHERE index_run_id=?", (run["id"],)
+        ).fetchone()
+        if retired:
+            raise ValueError(f"IndexRun {run['id']} 存储已退役（{retired['state']}），请使用新的来源快照构建索引")
+        if require_collection:
+            name = str(run["collection_name"])
+            if not self.vector_store.collection_exists(name):
+                raise ValueError(f"IndexRun {run['id']} 物理 collection 缺失，请恢复原快照后重试")
+            if self.vector_store.exact_count(name) != int(run["expected_count"]):
+                raise ValueError(f"IndexRun {run['id']} 物理 point 数不完整，拒绝复用或发布")
 
     def _execute_run(self, run_id: int) -> None:
         run = self.db.get_run(run_id)
@@ -307,6 +324,7 @@ class PolicyIndexer:
         run = self.db.get_run(run_id)
         if run["status"] != "succeeded":
             raise ValueError("只有 succeeded IndexRun 才能激活")
+        self._assert_storage_available(run)
         if self.config.strict_source_freshness and not self.db.sources_are_current(run_id):
             raise ValueError("IndexRun 来源已不是当前 active ChunkRun")
         self.db.update_run(run_id, activation_status="switching")

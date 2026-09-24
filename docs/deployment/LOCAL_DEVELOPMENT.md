@@ -23,6 +23,9 @@ POLICY_LIBREOFFICE_PATH=C:\Program Files\LibreOffice\program\soffice.exe
 
 ## 启动
 
+PS1已转调跨平台run-service入口；配置统一从项目根.env读取，外部环境变量优先。
+容器准备与Linux依赖见[Docker-ready说明](DOCKER_READY_AND_INDEX_RETIREMENT.md)。
+
 ```powershell
 & 'D:\2-code\policy-platform\scripts\dev-backend.ps1'
 & 'D:\2-code\policy-platform\scripts\dev-frontend.ps1'

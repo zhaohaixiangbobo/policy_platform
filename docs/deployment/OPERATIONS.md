@@ -59,3 +59,8 @@ Set-Location 'D:\2-code\policy-platform\backend'
 - 问答失败：检查 `logs/api.log` 中的 `knowledge_query_failed` 事件，再核对 Qdrant、Embedding、Reranker 和 Generator 配置及可用性。
 - Platform 数据库异常：执行 `alembic current` 并检查 `var/platform.db` 权限。
 - 新文档失败：保留失败运行记录，修复输入或服务后创建新运行，不修改旧 active 指针。
+# 2026-09-24索引存储维护补充
+
+旧索引清理使用受保护的明确ID清单，默认预览；历史业务记录保留。
+1—7已删除向量存储，8、9保留，当前Alias为9。
+安全边界、命令、验证结果和MySQL计划见[部署与索引退役说明](DOCKER_READY_AND_INDEX_RETIREMENT.md)。

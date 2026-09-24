@@ -1,0 +1,14 @@
+# 文件说明：未来镜像仅包含代码，运行数据、密钥及本机依赖由外部管理。
+.git
+.env
+.env.*
+!.env.example
+var
+logs
+node_modules
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+frontend/dist
+.venv
+docs/ui-reference

@@ -29,6 +29,10 @@ var/knowledge/              知识数据库及当前有效 DOCX/PDF
 
 ## 初始化与启动
 
+2026-09-24已补充跨平台 `scripts/run-service.py api|worker|migrate` 入口；
+Docker-ready改动、旧索引清理记录及未来MySQL顺序见[部署准备说明](docs/deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md)。
+当前仍使用双SQLite，尚未正式构建Docker镜像。
+
 首次创建或重建 Platform 数据库：
 
 ```powershell

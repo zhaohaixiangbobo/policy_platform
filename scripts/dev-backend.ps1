@@ -4,4 +4,4 @@ $pythonPath = 'D:\3-anaconda\envs\py312\python.exe'
 $backendPath = Join-Path $PSScriptRoot '..\backend'
 
 Set-Location -LiteralPath $backendPath
-& $pythonPath -m uvicorn app.main:app --host 127.0.0.1 --port 8020 --reload
+& $pythonPath (Join-Path $PSScriptRoot 'run-service.py') api --reload

@@ -1,14 +1,15 @@
 # 文件说明：统一Platform后端与知识模块运行时依赖，版本与当前py312环境保持一致。
 alembic==1.14.0
 argon2-cffi==25.1.0
-docx2pdf==0.1.8
+docx2pdf==0.1.8; sys_platform == "win32"
 fastapi==0.115.6
 httpx==0.28.1
 lxml==6.0.2
 pydantic-settings==2.7.1
 pypdf==4.3.1
 python-multipart==0.0.20
-pywin32==312
+python-dotenv==1.2.1
+pywin32==312; sys_platform == "win32"
 qdrant-client==1.19.0
 requests==2.32.5
 sqlalchemy==2.0.36

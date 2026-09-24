@@ -100,6 +100,15 @@ class IndexDatabase:
                 UNIQUE(profile_id, source_manifest_hash, embedding_contract_hash, config_hash)
             );
 
+            CREATE TABLE IF NOT EXISTS index_storage_retirement (
+                index_run_id INTEGER PRIMARY KEY REFERENCES index_run(id),
+                collection_name TEXT NOT NULL,
+                state TEXT NOT NULL CHECK(state IN ('DELETING', 'DELETED')),
+                requested_at TEXT NOT NULL,
+                deleted_at TEXT,
+                reason TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS index_run_source (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 index_run_id INTEGER NOT NULL REFERENCES index_run(id) ON DELETE CASCADE,

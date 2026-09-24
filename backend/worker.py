@@ -6,6 +6,8 @@ import argparse
 import json
 import logging
 import os
+import signal
+import threading
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -328,17 +330,28 @@ def main() -> int:
     parser.add_argument("--once", action="store_true", help="只推进一个任务阶段后退出")
     parser.add_argument("--poll-seconds", type=float, default=2.0)
     args = parser.parse_args()
+    stop_requested = threading.Event()
+
+    def request_stop(signum, _frame):
+        """完成当前阶段后退出，避免中途打断数据库提交和Alias核验。"""
+        LOGGER.info("event=worker_stop_requested signal=%s", signum)
+        stop_requested.set()
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
     worker_id = f"local-worker-{os.getpid()}"
     LOGGER.info(
         "event=worker_started worker_id=%s once=%s poll_seconds=%s",
         worker_id, args.once, args.poll_seconds,
     )
-    while True:
+    while not stop_requested.is_set():
         worked = run_once(worker_id)
         if args.once:
             return 0
         if not worked:
-            time.sleep(max(args.poll_seconds, 0.5))
+            stop_requested.wait(max(args.poll_seconds, 0.5))
+    LOGGER.info("event=worker_stopped worker_id=%s", worker_id)
+    return 0
 
 
 if __name__ == "__main__":

@@ -4,6 +4,11 @@
 
 ## 1. 当前状态
 
+2026-09-24：完成Docker-ready入口、配置、Linux依赖标记与旧索引清理保护。
+IndexRun 1—7仅向量存储已退役，关系库历史保留；8保留，9仍为当前Alias目标。
+详情及下一阶段双MySQL/Alembic建议见[部署与索引退役说明](deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md)。
+本轮未创建镜像、Compose或迁移MySQL。
+
 `D:\2-code\policy-platform` 已成为完整的本机测试工程：
 
 - `frontend` 提供制度库、问答、反馈和诊断页面；

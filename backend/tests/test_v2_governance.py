@@ -379,6 +379,12 @@ class _UnusedEmbedding:
 
 
 class _AliasStore:
+    def collection_exists(self, _name: str) -> bool:
+        return True
+
+    def exact_count(self, _name: str) -> int:
+        return 0
+
     def __init__(self, target: str, fail: bool) -> None:
         self.target = target
         self.fail = fail
