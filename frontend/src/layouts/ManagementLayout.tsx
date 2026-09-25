@@ -1,31 +1,39 @@
 /**
  * 文件说明：提供第二期管理后台统一顶部导航、分组侧栏、用户身份与内容工作区。
  */
-import { ApartmentOutlined, AuditOutlined, DatabaseOutlined, FileProtectOutlined, HomeOutlined, LinkOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SafetyCertificateOutlined, TeamOutlined, UnorderedListOutlined } from '@ant-design/icons';
-import { Avatar, Button, Dropdown, Layout, Menu, Space, Typography } from 'antd';
+import { ApartmentOutlined, AuditOutlined, DatabaseOutlined, FileProtectOutlined, LinkOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SafetyCertificateOutlined, TeamOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import { Avatar, Button, Dropdown, Layout, Menu, Typography } from 'antd';
 import { useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
 import { UiIcon } from '../components/UiIcon';
+import { useFeatures } from '../api/learning';
+import { navigationItems, resolveSelectedKey } from './BasicLayout';
 
 const { Header, Sider, Content } = Layout;
 
 const sideItems = [
-  { type: 'group' as const, label: '知识管理', children: [
-    { key: '/admin/jobs', icon: <UiIcon icon={UnorderedListOutlined} />, label: '任务中心' },
-    { key: '/admin/reviews', icon: <UiIcon icon={AuditOutlined} />, label: '解析与分块审核' },
-    { key: '/admin/knowledge', icon: <UiIcon icon={DatabaseOutlined} />, label: '制度治理与发布' },
-  ] },
-  { type: 'group' as const, label: '知识应用', children: [
-    { key: '/admin/relations', icon: <UiIcon icon={LinkOutlined} />, label: '制度关系' },
-    { key: '/admin/processes', icon: <UiIcon icon={ApartmentOutlined} />, label: '流程管理' },
-    { key: '/documents', icon: <UiIcon icon={DatabaseOutlined} />, label: '制度库' },
-  ] },
-  { type: 'group' as const, label: '系统管理', children: [
-    { key: '/admin/users', icon: <UiIcon icon={TeamOutlined} />, label: '用户与权限' },
-    { key: '/diagnostics/requests', icon: <UiIcon icon={SafetyCertificateOutlined} />, label: '审计与诊断' },
-  ] },
+  {
+    type: 'group' as const, label: '知识管理', children: [
+      { key: '/admin/jobs', icon: <UiIcon icon={UnorderedListOutlined} />, label: '任务中心' },
+      { key: '/admin/reviews', icon: <UiIcon icon={AuditOutlined} />, label: '解析与分块审核' },
+      { key: '/admin/knowledge', icon: <UiIcon icon={DatabaseOutlined} />, label: '制度治理与发布' },
+    ]
+  },
+  {
+    type: 'group' as const, label: '知识应用', children: [
+      { key: '/admin/relations', icon: <UiIcon icon={LinkOutlined} />, label: '制度关系' },
+      { key: '/admin/processes', icon: <UiIcon icon={ApartmentOutlined} />, label: '流程管理' },
+      { key: '/documents', icon: <UiIcon icon={DatabaseOutlined} />, label: '制度库' },
+    ]
+  },
+  {
+    type: 'group' as const, label: '系统管理', children: [
+      { key: '/admin/users', icon: <UiIcon icon={TeamOutlined} />, label: '用户与权限' },
+      { key: '/diagnostics/requests', icon: <UiIcon icon={SafetyCertificateOutlined} />, label: '审计与诊断' },
+    ]
+  },
 ];
 
 export function ManagementLayout() {
@@ -33,6 +41,11 @@ export function ManagementLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const auth = useAuth();
+  const features = useFeatures();
+  const visibleNavigation = features?.learning_assessment
+    ? [...navigationItems.slice(0, 3), { key: '/learning', label: '学习成效检测' }, ...navigationItems.slice(3)]
+    : navigationItems;
+  const topSelectedKeys = useMemo(() => [resolveSelectedKey(location.pathname)], [location.pathname]);
   const selected = useMemo(() => {
     const match = ['/admin/jobs', '/admin/reviews', '/admin/knowledge', '/admin/relations', '/admin/processes', '/admin/users'].find((item) => location.pathname.startsWith(item));
     return [match ?? location.pathname];
@@ -41,16 +54,18 @@ export function ManagementLayout() {
   return (
     <Layout className="management-shell">
       <Header className="management-header">
-        <button className="management-brand" type="button" onClick={() => navigate('/')}>
+        <button className="brand-home-button management-brand" type="button" onClick={() => navigate('/')}>
           <span className="brand-mark"><UiIcon icon={FileProtectOutlined} /></span>
-          <strong>制度知识智能服务平台</strong>
+          <Typography.Title level={4} className="brand-title">制度知识智能服务平台</Typography.Title>
         </button>
-        <nav className="management-top-nav" aria-label="平台主导航">
-          <button type="button" onClick={() => navigate('/')}><UiIcon icon={HomeOutlined} /> 首页</button>
-          <button type="button" onClick={() => navigate('/chat')}>智能问答</button>
-          <button type="button" onClick={() => navigate('/documents')}>制度库</button>
-          <button className="active" type="button">管理后台</button>
-        </nav>
+        <Menu
+          className="desktop-nav management-top-nav"
+          mode="horizontal"
+          disabledOverflow
+          selectedKeys={topSelectedKeys}
+          items={visibleNavigation}
+          onClick={({ key }) => navigate(key)}
+        />
         <Dropdown menu={{ items: [{ key: 'logout', icon: <UiIcon icon={LogoutOutlined} />, label: '退出登录', onClick: () => void auth.logout().then(() => navigate('/login')) }] }}>
           <button className="management-user" type="button">
             <Avatar size={30}>{auth.user?.display_name.slice(0, 1)}</Avatar>

@@ -1,0 +1,1091 @@
+/* 文件说明：学习自测双分区界面；仅影响本页面的卡片、单题作答及响应式布局。 */
+.learning-page.learning-workspace {
+  width: 100%;
+  max-width: 1720px;
+  margin-inline: auto;
+  color: #17233b;
+}
+
+.learning-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 6px 0 12px;
+}
+
+.learning-heading .ant-typography {
+  margin: 0 0 6px;
+}
+
+.learning-heading .ant-segmented {
+  flex-shrink: 0;
+  padding: 4px;
+  background: #edf1f7;
+  border-radius: 24px;
+}
+
+.learning-heading h2.ant-typography {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -.4px;
+}
+
+.learning-heading .ant-typography-secondary {
+  color: #8a94a6;
+  font-size: 13px;
+}
+
+.learning-heading .ant-segmented-item {
+  border-radius: 20px;
+}
+
+.learning-heading .ant-segmented-item-selected {
+  color: #2465f5;
+  background: #e2ecff;
+  box-shadow: none;
+}
+
+.learning-setup-layout,
+.learning-answer-layout {
+  display: grid;
+  gap: 24px;
+  align-items: stretch;
+}
+
+.learning-setup-layout {
+  grid-template-columns: minmax(0, 2.125fr) minmax(340px, 1fr);
+}
+
+.learning-answer-layout {
+  grid-template-columns: minmax(0, 2.333fr) minmax(310px, 1fr);
+}
+
+.learning-workspace .ant-card {
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgb(232 236 242 / 45%);
+  box-shadow: 0 5px 24px rgb(32 65 117 / 4%);
+}
+
+.learning-workspace .ant-card-head {
+  min-height: 54px;
+  padding: 0 22px;
+  border-bottom: 0;
+}
+
+.learning-workspace .ant-card-body {
+  padding: 22px;
+}
+
+.learning-workspace .ant-card-head-title {
+  font-size: 16px;
+}
+
+.learning-workspace .ant-card-head-title .anticon {
+  color: #286bff;
+}
+
+.learning-workspace .ant-btn {
+  border-radius: 7px;
+}
+
+.learning-workspace .ant-btn-primary {
+  background: #2566ff;
+  box-shadow: 0 3px 7px rgb(37 102 255 / 12%);
+}
+
+.learning-question-footer .ant-btn-primary {
+  color: #406aa8;
+  background: #edf3fc;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.learning-workspace .ant-tag {
+  flex-shrink: 0;
+  margin-inline-end: 0;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.learning-list-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 16px;
+  border-bottom: 1px solid #f0f3f8;
+  font-size: 13px;
+}
+
+.learning-list-heading>span:first-child {
+  color: #286bff;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #7aa2ff;
+}
+
+.learning-document-card>.ant-card-head,
+.learning-settings-card>.ant-card-head {
+  background: linear-gradient(100deg, #f8faff, #fff 75%);
+  border-radius: 12px 12px 0 0;
+}
+
+.learning-document-card>.ant-card-body,
+.learning-settings-card>.ant-card-body {
+  padding-top: 12px;
+}
+
+.learning-generated-tag {
+  color: #6b917c;
+  background: #f0f7f3;
+  border: 0;
+  font-size: 11px;
+}
+
+.learning-document-list {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+/* 每条制度以浅边框独立成卡，条目之间的分界更清楚；选中态用蓝色边框与底色区分。 */
+.learning-document-option.ant-radio-wrapper {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  padding: 12px 18px;
+  margin: 0;
+  border: 1px solid #e4e9f1;
+  border-radius: 8px;
+  background: #fff;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+
+.learning-document-option:hover {
+  background: #f8faff;
+  border-color: #adc6ff;
+}
+
+.learning-document-option.is-selected {
+  background: #f0f5ff;
+  border-color: #8fb0ff;
+  box-shadow: 0 0 0 1px #c9d9ff inset;
+}
+
+.learning-document-option>.ant-radio {
+  margin-top: 3px;
+}
+
+.learning-document-option>span:last-child {
+  min-width: 0;
+  flex: 1;
+  padding-inline-start: 12px;
+}
+
+.learning-document-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.learning-document-title strong {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.learning-document-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: #7e8a9e;
+  font-size: 12px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.learning-document-card .ant-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-top: 0;
+  padding-top: 18px;
+}
+
+.learning-document-card .ant-pagination-total-text {
+  margin-right: auto;
+}
+
+.learning-settings-card {
+  position: sticky;
+  top: 20px;
+  min-width: 0;
+}
+
+.learning-selected-document {
+  display: flex;
+  gap: 12px;
+  padding: 15px;
+  background: #f6f9ff;
+  border: 0;
+  border-radius: 8px;
+}
+
+.learning-selected-document>span:first-child {
+  align-self: flex-start;
+  padding: 8px;
+  background: #e8f0ff;
+  color: #2465f5;
+  font-size: 20px;
+  border-radius: 6px;
+}
+
+.learning-selected-document>div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.learning-selected-document strong {
+  display: block;
+  margin-bottom: 6px;
+  line-height: 1.65;
+  font-size: 13px;
+}
+
+.learning-selected-document div div {
+  color: #7e8a9e;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.learning-selection-placeholder {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  padding: 30px 12px;
+  background: #f7f9fc;
+  color: #7e8a9e;
+  border-radius: 8px;
+}
+
+.learning-config-section {
+  margin-top: 26px;
+}
+
+.learning-config-section h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 13px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.learning-config-section h3 .anticon {
+  color: #286bff;
+}
+
+.learning-config-section small {
+  margin-left: auto;
+  color: #8a95a7;
+  font-weight: 400;
+  font-size: 11px;
+}
+
+.learning-config-section .ant-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 0;
+}
+
+.learning-config-section .ant-radio-wrapper {
+  font-size: 13px;
+}
+
+.learning-scope-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  background: #f7f9fd;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.learning-count-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.learning-count-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #7e8a9e;
+  font-size: 12px;
+}
+
+.learning-count-grid .ant-input-number {
+  width: 100%;
+  border-radius: 7px;
+}
+
+.learning-guidance {
+  margin: 18px 0;
+  padding: 0;
+  background: transparent;
+  font-size: 12px;
+  color: #8a94a6;
+  line-height: 1.8;
+}
+
+.learning-guidance .anticon {
+  color: #286bff;
+  margin-right: 4px;
+}
+
+.learning-guidance p {
+  margin: 8px 0 0;
+}
+
+.learning-main-column,
+.learning-side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-width: 0;
+}
+
+.learning-side-column {
+  position: sticky;
+  top: 20px;
+}
+
+.learning-banner-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.learning-file-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 46px;
+  border-radius: 9px;
+  background: #eef4ff;
+  color: #2465f5;
+  font-size: 26px;
+}
+
+.learning-banner-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.learning-banner-text h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.learning-snapshot {
+  color: #9aa4b4;
+  font-size: 11px;
+  line-height: 1.8;
+  margin-top: 4px;
+}
+
+.learning-assessment-banner .ant-alert {
+  margin-top: 14px;
+}
+
+.learning-question-card .ant-card-body {
+  padding: 24px;
+}
+
+.learning-question-toolbar {
+  margin-bottom: 26px;
+}
+
+.learning-question-stem {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.8;
+  margin: 0 0 22px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.learning-answer-options .ant-radio-group,
+.learning-answer-options .ant-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 14px;
+}
+
+.learning-answer-options .ant-radio-wrapper,
+.learning-answer-options .ant-checkbox-wrapper {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  margin: 0;
+  padding: 15px 16px;
+  border: 1px solid #eef1f5;
+  border-radius: 8px;
+  line-height: 1.8;
+  color: #293853;
+}
+
+.learning-answer-options .ant-radio,
+.learning-answer-options .ant-checkbox {
+  margin-top: 5px;
+}
+
+.learning-answer-options .is-chosen {
+  border-color: #b6ceff;
+  background: #f0f5ff;
+}
+
+.learning-answer-options .ant-radio-wrapper-disabled>span:last-child,
+.learning-answer-options .ant-checkbox-wrapper-disabled>span:last-child {
+  color: #53627a;
+}
+
+.learning-answer-options .ant-radio-wrapper>span:last-child,
+.learning-answer-options .ant-checkbox-wrapper>span:last-child {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding-inline-start: 14px;
+}
+
+.learning-question-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid #e9eef6;
+}
+
+.learning-question-footer>.ant-typography {
+  font-size: 12px;
+}
+
+.learning-explanation {
+  padding: 18px 20px;
+  margin-top: 24px;
+  border: 0;
+  border-radius: 9px;
+  background: #f6f8fc;
+}
+
+.learning-explanation .ant-typography {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.learning-explanation .ant-typography:last-of-type {
+  margin-bottom: 0;
+}
+
+/* 制度依据作为独立面板展示，左侧蓝色竖线与解析区区分开。 */
+.learning-evidence {
+  margin-top: 20px;
+  padding: 16px 18px;
+  border: 1px solid #e8eef8;
+  border-left: 3px solid #7aa2ff;
+  border-radius: 9px;
+  background: #fafcff;
+}
+
+.learning-evidence>.ant-typography:first-child {
+  font-size: 13px;
+  color: #405478;
+}
+
+.learning-evidence .ant-typography {
+  margin-top: 10px;
+  color: #3b4a63;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+
+.learning-evidence>a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+.learning-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.learning-progress-row .ant-progress {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.learning-progress-row>span {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.learning-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.learning-metrics.is-submitted {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.learning-metrics>div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 3px;
+  border-radius: 7px;
+  background: #f4f6f9;
+}
+
+.learning-metrics strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.learning-metrics span {
+  color: #7e8a9e;
+  font-size: 11px;
+}
+
+.learning-metrics .is-blue {
+  background: #eef4ff;
+  color: #2465f5;
+}
+
+.learning-metrics .is-green {
+  background: #f0f8f4;
+  color: #54846b;
+}
+
+.learning-metrics .is-red {
+  background: #fcf2f4;
+  color: #bc6375;
+}
+
+.learning-score {
+  margin: 0 0 16px;
+  color: #8b96a6;
+}
+
+.learning-score strong {
+  color: #2465f5;
+  font-size: 38px;
+  font-weight: 600;
+}
+
+.learning-side-column .ant-space-item>.ant-typography {
+  font-size: 12px;
+}
+
+.learning-filter-label {
+  color: #8290a6;
+  font-size: 11px;
+}
+
+.learning-nav-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 15px;
+  color: #7e8a9e;
+  font-size: 11px;
+}
+
+.learning-nav-legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.learning-nav-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cbd2de;
+}
+
+.learning-nav-legend .is-current {
+  background: #286bff;
+}
+
+.learning-nav-legend .is-answered {
+  background: #a7bddd;
+}
+
+.learning-nav-legend .is-correct {
+  background: #23a26c;
+}
+
+.learning-nav-legend .is-wrong {
+  background: #ee6a7e;
+}
+
+.learning-question-nav {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.learning-question-nav button {
+  height: 38px;
+  border-radius: 7px;
+  border: 1px solid #e9edf4;
+  background: #f8f9fb;
+  color: #53627a;
+  cursor: pointer;
+  font-size: 14px;
+  transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+
+.learning-question-nav button:hover {
+  border-color: #adc6ff;
+}
+
+.learning-question-nav .is-answered {
+  color: #2465f5;
+  background: #edf3ff;
+}
+
+.learning-question-nav .is-correct {
+  color: #54846b;
+  background: #f0f8f4;
+  border-color: transparent;
+}
+
+.learning-question-nav .is-wrong {
+  color: #b56777;
+  background: #fcf2f4;
+  border-color: transparent;
+}
+
+.learning-question-nav .is-current {
+  border-color: #286bff;
+  box-shadow: 0 0 0 2px rgb(40 107 255 / 14%);
+  font-weight: 600;
+}
+
+.learning-question-nav button:focus-visible,
+.learning-review-list button:focus-visible {
+  outline: 2px solid #286bff;
+  outline-offset: 3px;
+}
+
+.learning-review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.learning-review-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid transparent;
+  background: #f8fafc;
+  color: #7b8ba5;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+
+.learning-review-list button:hover {
+  background: #f3f7ff;
+  border-color: #c5d7ff;
+  color: #2465f5;
+}
+
+.learning-review-list button:hover strong {
+  color: #2465f5;
+}
+
+.learning-review-list button>span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+
+.learning-review-list strong {
+  display: block;
+  color: #4b5b73;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.learning-review-list small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.learning-empty {
+  padding: 36px 0;
+}
+
+/* 成功状态收为轻提示；生成中和错误信息仍完整展示。 */
+.learning-task-notice.ant-alert-success {
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 20px;
+  background: #f0f8f4;
+}
+
+.learning-task-notice.ant-alert-success .ant-alert-message {
+  color: #648874;
+  font-size: 12px;
+}
+
+.learning-task-notice.ant-alert-success .ant-alert-icon {
+  color: #83a993;
+  font-size: 13px;
+}
+
+.learning-document-title .document-status-tag {
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 20px;
+}
+
+.learning-workspace .ant-input-affix-wrapper,
+.learning-workspace .ant-input-number {
+  min-height: 38px;
+  border-color: #e8ecf2;
+}
+
+.learning-count-grid .ant-input-number-input {
+  height: 36px;
+}
+
+.learning-settings-card .ant-btn-primary {
+  height: 42px;
+  border-radius: 8px;
+  box-shadow: 0 3px 8px rgb(37 102 255 / 10%);
+}
+
+.learning-scope-picker .ant-select-selection-item {
+  font-size: 12px;
+  line-height: 20px;
+  height: 22px;
+}
+
+.learning-scope-picker .ant-select-selector {
+  border-color: #edf0f5 !important;
+  background: transparent !important;
+}
+
+.learning-answer-options .is-correct-option {
+  background: #f1f8f4;
+  border-color: #e3efe7;
+}
+
+.learning-answer-options .is-wrong-option {
+  background: #fcf3f4;
+  border-color: #f4e4e7;
+}
+
+.learning-explanation strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: #52627a;
+}
+
+.learning-explanation .ant-typography-secondary {
+  font-size: 12px;
+  color: #8a94a6;
+}
+
+.learning-score {
+  text-align: center;
+  padding: 4px 0 8px;
+}
+
+.learning-score strong {
+  font-size: 44px;
+  line-height: 1.2;
+}
+
+.learning-score>span {
+  font-size: 12px;
+}
+
+.learning-recent-progress {
+  padding: 12px 14px;
+  background: #f7f9fd;
+  border-radius: 8px;
+}
+
+.learning-recent-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #718099;
+  font-size: 12px;
+}
+
+.learning-recent-heading .ant-btn {
+  color: #6480ae;
+  font-size: 12px;
+}
+
+.learning-recent-heading .ant-btn:disabled {
+  color: #aeb7c6;
+}
+
+.learning-recent-progress small {
+  display: block;
+  color: #8a94a6;
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.learning-indeterminate {
+  height: 5px;
+  margin: 10px 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #e8eef8;
+}
+
+.learning-indeterminate span {
+  display: block;
+  width: 30%;
+  height: 100%;
+  border-radius: inherit;
+  background: #8baeff;
+  animation: learning-progress-slide 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes learning-progress-slide {
+  to {
+    transform: translateX(233%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .learning-indeterminate span {
+    animation: none;
+  }
+}
+
+/* 桌面共用一个工作区高度，长列表/原文在卡片内部滚动，缩放时两侧底部仍对齐。 */
+@media (min-width: 851px) {
+  .learning-setup-layout {
+    height: clamp(720px, calc(100vh - 250px), 1000px);
+  }
+
+  /* 答题区不设固定最小高度，由左侧题目内容撑开。 */
+  .learning-document-card,
+  .learning-settings-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .learning-document-card>.ant-card-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .learning-document-card .ant-spin-nested-loading {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    margin-top: 8px;
+    scrollbar-gutter: stable;
+  }
+
+  .learning-document-card .ant-pagination {
+    flex-shrink: 0;
+  }
+
+  .learning-settings-card>.ant-card-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    scrollbar-gutter: stable;
+  }
+
+  /* 答题区高度由题目内容决定：未展开制度依据时不留大段空白，展开后左右两列随之一起变长。
+     网格行高取两列“内容高度”的较大者，所以右侧“建议复习”的列表不能参与行高计算：
+     卡片只以 min-height 占位，列表主体绝对定位铺满卡片余量并在内部滚动，两侧底部始终对齐。 */
+  .learning-main-column,
+  .learning-side-column {
+    min-height: 0;
+    align-self: stretch;
+  }
+
+  .learning-assessment-banner {
+    flex-shrink: 0;
+  }
+
+  .learning-question-card {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .learning-question-card>.ant-card-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+
+  .learning-question-footer {
+    margin-top: auto;
+    padding-top: 22px;
+  }
+
+  .learning-answer-options,
+  .learning-explanation {
+    margin-bottom: 22px;
+  }
+
+  .learning-side-column>.ant-card {
+    flex-shrink: 0;
+  }
+
+  .learning-side-column>.learning-review-card {
+    position: relative;
+    flex: 1;
+    min-height: 220px;
+  }
+
+  .learning-side-column>.learning-review-card>.ant-card-head {
+    position: relative;
+    z-index: 1;
+    background: #fff;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .learning-side-column>.learning-review-card>.ant-card-body {
+    position: absolute;
+    top: 54px;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    overflow: auto;
+    scrollbar-gutter: stable;
+  }
+}
+
+@media (max-width: 1100px) {
+  .learning-setup-layout {
+    grid-template-columns: minmax(0, 2.125fr) minmax(300px, 1fr);
+  }
+
+  .learning-answer-layout {
+    grid-template-columns: minmax(0, 2.333fr) minmax(280px, 1fr);
+  }
+
+  .learning-workspace .ant-card-body {
+    padding: 16px;
+  }
+
+  .learning-workspace .ant-card-head {
+    padding: 0 16px;
+  }
+}
+
+@media (max-width: 850px) {
+  .learning-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .learning-setup-layout,
+  .learning-answer-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .learning-settings-card,
+  .learning-side-column {
+    position: static;
+  }
+
+  .learning-side-column {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+@media (max-width: 540px) {
+  .learning-side-column {
+    display: flex;
+  }
+
+  .learning-banner-content {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .learning-file-icon {
+    width: 34px;
+    height: 40px;
+    font-size: 22px;
+  }
+
+  .learning-document-title {
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .learning-question-stem {
+    font-size: 17px;
+  }
+
+  .learning-question-footer>.ant-space {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .learning-count-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

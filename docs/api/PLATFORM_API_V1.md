@@ -2,6 +2,17 @@
 
 > 文件说明：记录当前对浏览器公开的接口和迁移后的知识访问边界；机器可读契约见 `openapi.json`。
 
+## 学习成效检测（learning_assessment_v1）
+
+- `GET /api/v1/features`：登录后读取可见功能开关和题量/有效期配置。
+- `POST /api/v1/learning-assessments`：创建个人生成任务，202返回task_id；request_id UUID用于去重。
+- `GET /api/v1/learning-assessments/current`：本用户任务和未过期检测；提交前仅返回题干、选项及本人暂存答案。
+- `PUT /api/v1/learning-assessments/{assessment_id}/answers`：暂存答案。
+- `POST /api/v1/learning-assessments/{assessment_id}/submit`：确定性评分，提交后公开答案、解析和原文快照；重复提交保持首次结果。
+
+模块开关关闭时业务接口404；写接口校验CSRF，所有请求校验身份与制度访问权限。
+最多15题，单用户最近一次24小时；后端不接受客户端传入标准答案。详细字段、示例与错误码见[功能文档](../LEARNING_ASSESSMENT.md#6-api)。
+
 ## 健康检查
 
 - `GET /api/v1/health/live`：Platform API 进程存活。

@@ -12,15 +12,15 @@ def test_portable_launcher_commands():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     cases = [("api", ["-m", "uvicorn", "app.main:app"]),
-             ("worker", ["worker.py"]), ("migrate", ["-m", "alembic"])]
+             ("worker", ["worker.py"]), ("learning-worker", ["learning_worker.py"]), ("migrate", ["-m", "alembic"])]
     for service, prefix in cases:
         with patch.object(module.sys, "argv", ["run-service.py", service]), \
              patch.object(module.os, "chdir") as chdir, \
-             patch.object(module.os, "execv") as execute, \
+             patch.object(module, "execute") as execute, \
              patch.dict(os.environ, {"PLATFORM_HOST": "0.0.0.0", "PLATFORM_PORT": "9020"}):
             module.main()
             chdir.assert_called_once_with(root / "backend")
-            command = execute.call_args.args[1]
-            assert command[1:1 + len(prefix)] == prefix
+            command = execute.call_args.args[0]
+            assert command[:len(prefix)] == prefix
             if service == "api":
                 assert "0.0.0.0" in command and "9020" in command

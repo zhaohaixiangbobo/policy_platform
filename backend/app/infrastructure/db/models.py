@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.mysql import LONGTEXT
 
 from app.infrastructure.db.base import Base
 
@@ -29,6 +30,24 @@ class UserAccount(Base):
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now)
+
+
+class LearningAssessmentSlot(Base):
+    """每用户一个短期自测槽位；生成候选与最近一次结果分开，失败保留旧结果。"""
+    __tablename__ = "learning_assessment_slot"
+    user_id: Mapped[str] = mapped_column(ForeignKey("user_account.id", ondelete="CASCADE"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    current_id: Mapped[str | None] = mapped_column(String(36))
+    current_json: Mapped[str | None] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    task_id: Mapped[str | None] = mapped_column(String(36), unique=True)
+    task_state: Mapped[str | None] = mapped_column(String(20))
+    task_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pending_json: Mapped[str | None] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"))
+    progress: Mapped[str | None] = mapped_column(String(200))
+    error_message: Mapped[str | None] = mapped_column(String(300))
+    __mapper_args__ = {"version_id_col": version}
 
 
 class LocalCredential(Base):

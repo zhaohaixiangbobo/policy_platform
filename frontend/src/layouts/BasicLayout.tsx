@@ -9,10 +9,11 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { getPlatformReadiness } from '../api/health';
 import { UiIcon } from '../components/UiIcon';
+import { useFeatures } from '../api/learning';
 
 const { Header, Content } = Layout;
 
-const navigationItems = [
+export const navigationItems = [
   { key: '/', label: '首页' },
   { key: '/chat', label: '智能问答' },
   { key: '/documents', label: '制度库' },
@@ -20,8 +21,9 @@ const navigationItems = [
   { key: '/settings/about', label: '服务说明' },
 ];
 
-function resolveSelectedKey(pathname: string): string {
+export function resolveSelectedKey(pathname: string): string {
   if (pathname.startsWith('/chat')) return '/chat';
+  if (pathname.startsWith('/learning')) return '/learning';
   if (pathname.startsWith('/documents')) return '/documents';
   if (pathname.startsWith('/admin')) return '/admin/jobs';
   if (pathname.startsWith('/diagnostics')) return '/diagnostics';
@@ -30,6 +32,9 @@ function resolveSelectedKey(pathname: string): string {
 }
 
 export function BasicLayout() {
+  const features = useFeatures();
+  const visibleNavigation = features?.learning_assessment
+    ? [...navigationItems.slice(0, 3), { key: '/learning', label: '学习成效检测' }, ...navigationItems.slice(3)] : navigationItems;
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -72,8 +77,9 @@ export function BasicLayout() {
         <Menu
           className="desktop-nav"
           mode="horizontal"
+          disabledOverflow
           selectedKeys={selectedKeys}
-          items={navigationItems}
+          items={visibleNavigation}
           onClick={({ key }) => handleNavigate(key)}
         />
         <Space className="service-state" size={8}>
@@ -96,7 +102,7 @@ export function BasicLayout() {
         <Menu
           mode="inline"
           selectedKeys={selectedKeys}
-          items={navigationItems}
+          items={visibleNavigation}
           onClick={({ key }) => handleNavigate(key)}
         />
       </Drawer>

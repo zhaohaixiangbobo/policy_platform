@@ -13,6 +13,7 @@ import { DiagnosticsPage } from '../pages/DiagnosticsPage';
 import { DiagnosticDetailPage } from '../pages/DiagnosticDetailPage';
 import { DocumentDetailPage } from '../pages/DocumentDetailPage';
 import { DocumentsPage } from '../pages/DocumentsPage';
+import { LearningAssessmentPage } from '../pages/LearningAssessmentPage';
 import { HomePage } from '../pages/HomePage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { PdfEntryPage } from '../pages/PdfEntryPage';
@@ -54,6 +55,7 @@ export const router = createBrowserRouter([
       element: <BasicLayout />,
       children: [
       { index: true, element: <HomePage /> },
+      { path: 'learning', element: <LearningAssessmentPage /> },
       {
         path: 'chat',
         element: <ChatPage />,

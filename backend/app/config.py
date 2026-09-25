@@ -5,6 +5,7 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
+from pydantic import Field
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -28,6 +29,10 @@ class Settings(BaseSettings):
     session_ttl_hours: int = 8
     cookie_secure: bool = False
     process_reviewer_user_id: str | None = None
+    learning_assessment_enabled: bool = False
+    learning_assessment_max_questions: int = Field(default=15, ge=1, le=15)
+    learning_assessment_ttl_hours: int = Field(default=24, ge=1, le=24)
+    learning_assessment_task_timeout_seconds: int = Field(default=1800, ge=300, le=3600)
 
     model_config = SettingsConfigDict(
         env_prefix="PLATFORM_",

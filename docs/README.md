@@ -42,6 +42,10 @@
 | 文档 | 状态 | 启动必读 | 权威范围 |
 |---|---|---:|---|
 | `docs/README.md` | CURRENT | 是 | 文档分类、阅读顺序和维护规则 |
+| [`LEARNING_ASSESSMENT.md`](LEARNING_ASSESSMENT.md) | CURRENT | 自测任务必读 | 生成learning_assessment_v2；UI learning_assessment_ui_v2；最多15题、24小时；已有模型验证记录，浏览器验收待完成 |
+| [`testing/LEARNING_UI_VERIFICATION_2026-09-24.md`](testing/LEARNING_UI_VERIFICATION_2026-09-24.md) | CURRENT | 自测UI验收时 | UI v2.1轻量视觉、等高双栏、进度面板；三种桌面宽度实屏验收待完成；后端保持不变 |
+| [`testing/LEARNING_ASSESSMENT_VERIFICATION_2026-09-24.md`](testing/LEARNING_ASSESSMENT_VERIFICATION_2026-09-24.md) | CURRENT | 自测验收时 | 17项最小测试、类型检查、本机0011迁移；真实模型超时待验收，空库问题已由后续记录关闭 |
+| [`testing/WORKER_AND_MIGRATION_FIX_2026-09-24.md`](testing/WORKER_AND_MIGRATION_FIX_2026-09-24.md) | CURRENT | Worker/迁移必读 | worker_supervision_v1；固定历史迁移、隔离SQLite重放；head保留0011 |
 | [`deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md`](deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md) | CURRENT | 部署/索引维护必读 | docker_ready_v1、index_storage_retirement_v1；1—7存储已退役，保留8、9；双MySQL与Compose为下一阶段建议 |
 | [`deployment/container.env.example`](deployment/container.env.example) | REFERENCE | 容器准备时 | Linux环境模板；实际Compose尚未打包 |
 | [`RAG_QUALITY_EVOLUTION_PLAN.md`](RAG_QUALITY_EVOLUTION_PLAN.md) | IN_PROGRESS | 问答增强任务必读 | 方案1.3；S1—S3代码完成；S3相关34项测试及类型检查通过；真实模型/浏览器待验收；S4/S5未开始 |
@@ -141,7 +145,9 @@
 | Quality Gate | answer_quality_gate_v3；默认关闭，可配置 | [quality_gate.py](../backend/knowledge/rag/quality_gate.py)、[runtime.py](../backend/knowledge/rag/runtime.py) | 启用时包含部分答案事实校验 |
 | 语义验证Schema | support_verifier_schema_v2 / support_verifier_input_v2 | [quality_gate.py](../backend/knowledge/rag/quality_gate.py) | 不新增默认模型调用 |
 | Citation / Evidence UID | citation_v1 / evidence_uid_v1 | [models.py](../backend/knowledge/rag/models.py) | 保持；父块使用自己的证据身份 |
-| Platform迁移最新头 | 0010_conversation_context；2026-09-19本机head已核验 | [迁移](../backend/migrations/versions/0010_conversation_context.py) | 历史记录不回填 |
+| Platform迁移最新头 | 0011_learning_assessment；历史结构已冻结，SQLite空库及增量重放通过 | [修复记录](testing/WORKER_AND_MIGRATION_FIX_2026-09-24.md) | 未切换MySQL，需另做MySQL环境验证 |
+| Worker启动与停止 | worker_supervision_v1；真实PID、本机角色锁、功能开关、阶段边界停止 | [本机运行](deployment/LOCAL_DEVELOPMENT.md) | 实际业务长任务Ctrl+C由用户手动验收 |
+| 学习成效检测 | learning_assessment_v2；单题一批、生成3路并发/串行审校，最多15题，24小时槽位；UI learning_assessment_ui_v2双分区 | [功能说明](LEARNING_ASSESSMENT.md) | 已有真实模型10题验证记录；浏览器人工验收及模型稳定性复测待完成，无长期考试管理 |
 | 前端包 | @policy-platform/frontend 0.1.0 | [package.json](../frontend/package.json) | 包版本不代表RAG契约版本 |
 | 回答展示S1 | 三状态共用公开正文和引用；空白正文兜底；类型检查通过 | [ChatPage.tsx](../frontend/src/pages/ChatPage.tsx) | 浏览器交互待验收；RAG/Citation版本保持原值 |
 | 引用/澄清展示 | 引用快照状态；补充卡片填写短回复，补全后可展开查询条件 | [EvidencePanel.tsx](../frontend/src/components/EvidencePanel.tsx)、[ChatPage.tsx](../frontend/src/pages/ChatPage.tsx) | S3已接入，浏览器交互待验收 |

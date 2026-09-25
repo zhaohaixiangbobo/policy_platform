@@ -11,6 +11,7 @@ import type { DocumentDetail, DocumentNode } from '../types/documents';
 import { buildDocumentReadingView, type DocumentReadingNode } from '../utils/documentReadingView';
 import { parseDocumentTable } from '../utils/documentTableView';
 import { documentPdfUrl } from '../utils/pdf';
+import { useFeatures } from '../api/learning';
 
 function pageLabel(entry: DocumentReadingNode): string | null {
   if (entry.pageStart == null) return null;
@@ -204,6 +205,7 @@ function ReadingNodeBlock({ entry, targetNode, highlightKeyword }: ReadingNodeBl
 }
 
 export function DocumentDetailPage() {
+  const features = useFeatures();
   const { documentId = '' } = useParams();
   const [searchParams] = useSearchParams();
   const targetNode = searchParams.get('node');
@@ -272,11 +274,16 @@ export function DocumentDetailPage() {
       {evidence ? <Alert type="info" showIcon message="已从问答引用定位到对应条款" /> : null}
       <Card bordered={false} className="document-reader-summary">
         <Space direction="vertical" size={12} className="full-width">
-          <Space wrap>
-            <Typography.Title level={2} className="page-heading"><HighlightedText text={document.title} keyword={highlightKeyword} /></Typography.Title>
-            <Tag color="green">{document.status}</Tag>
-            {highlightKeyword ? <Tag className="reading-search-keyword">正文关键词：{highlightKeyword}</Tag> : null}
-          </Space>
+          <div className="document-summary-heading">
+            <Space wrap>
+              <Typography.Title level={2} className="page-heading"><HighlightedText text={document.title} keyword={highlightKeyword} /></Typography.Title>
+              <Tag color="green">{document.status}</Tag>
+              {highlightKeyword ? <Tag className="reading-search-keyword">正文关键词：{highlightKeyword}</Tag> : null}
+            </Space>
+            {features?.learning_assessment && document.status === '现行有效' ? (
+              <Link to={`/learning?document_id=${document.id}`}><Button type="primary">学习检测</Button></Link>
+            ) : null}
+          </div>
           <Descriptions column={{ xs: 1, lg: 3 }} size="small">
             <Descriptions.Item label="制度编号">{document.document_code ?? '-'}</Descriptions.Item>
             <Descriptions.Item label="发布机构">{document.issuer ?? '-'}</Descriptions.Item>

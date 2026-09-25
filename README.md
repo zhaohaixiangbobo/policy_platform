@@ -60,6 +60,17 @@ Set-Location 'D:\2-code\policy-platform'
 & 'D:\2-code\policy-platform\scripts\dev-worker.ps1'
 ```
 
+同时启用学习成效检测时，可用一个命令启动两个相互独立的Worker：
+
+```powershell
+& 'D:\2-code\policy-platform\scripts\dev-workers.ps1'
+```
+
+该命令保留独立业务进程，按学习功能开关决定是否启动学习Worker。Windows入口保持真实PID；
+单独/联合启动共用本机角色锁，重复启动会报错。Ctrl+C或任一Worker退出时，监督器通知其他Worker
+停止领取新任务，等待当前阶段完成，每10秒显示等待进度，不自动强杀。请保留终端直到退出。
+更新本版本后请先停止旧Worker，再运行此入口；旧进程尚未加载角色锁。
+
 Worker 默认把任务领取、阶段完成/失败、知识处理进度、IndexRun 构建和 Alias 切换事件写入
 `logs/worker.log`，并按 10 MB、5 个历史文件滚动。路径和滚动参数可通过 `.env.example`
 中的 `PLATFORM_WORKER_LOG_*` 变量调整。
@@ -108,6 +119,8 @@ Set-Location 'D:\2-code\policy-platform\backend'
 本轮不自动执行模型联调、Qdrant 重建、负载测试、全量评测或 Chrome 89 实机测试。
 
 ## 事实源
+
+- [学习成效检测功能与启用说明](docs/LEARNING_ASSESSMENT.md)：最多15题，最近一次24小时；默认关闭，使用独立学习Worker。代码及最小测试完成，真实模型/浏览器验收待完成。
 
 - [项目文档总台账](docs/README.md)
 - [当前各模块版本与配置](docs/README.md#7-当前实现版本台账)

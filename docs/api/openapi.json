@@ -15,6 +15,28 @@
         "title": "AllDocumentSelection",
         "type": "object"
       },
+      "Answers": {
+        "additionalProperties": false,
+        "properties": {
+          "answers": {
+            "additionalProperties": {
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 5,
+              "type": "array"
+            },
+            "maxProperties": 15,
+            "title": "Answers",
+            "type": "object"
+          }
+        },
+        "required": [
+          "answers"
+        ],
+        "title": "Answers",
+        "type": "object"
+      },
       "AuthProviderSummary": {
         "properties": {
           "enabled": {
@@ -833,6 +855,65 @@
           "confirmed"
         ],
         "title": "ConversationContextSnapshot",
+        "type": "object"
+      },
+      "CreateAssessment": {
+        "additionalProperties": false,
+        "properties": {
+          "document_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "multiple": {
+            "default": 3,
+            "maximum": 15.0,
+            "minimum": 0.0,
+            "title": "Multiple",
+            "type": "integer"
+          },
+          "node_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 500,
+            "title": "Node Ids",
+            "type": "array"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "scope": {
+            "default": "FULL",
+            "enum": [
+              "FULL",
+              "SELECTED"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "single": {
+            "default": 5,
+            "maximum": 15.0,
+            "minimum": 0.0,
+            "title": "Single",
+            "type": "integer"
+          },
+          "true_false": {
+            "default": 2,
+            "maximum": 15.0,
+            "minimum": 0.0,
+            "title": "True False",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "document_id"
+        ],
+        "title": "CreateAssessment",
         "type": "object"
       },
       "CurrentUserResponse": {
@@ -6993,6 +7074,26 @@
         ]
       }
     },
+    "/api/v1/features": {
+      "get": {
+        "description": "公开已登录用户可见的功能开关；关闭模块时无需访问其缓存表。",
+        "operationId": "features_api_v1_features_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Features",
+        "tags": [
+          "features"
+        ]
+      }
+    },
     "/api/v1/health/live": {
       "get": {
         "description": "只证明Platform API进程可响应，不探测外部依赖。",
@@ -7044,6 +7145,166 @@
         "summary": "Ready",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/learning-assessments": {
+      "post": {
+        "operationId": "create_api_v1_learning_assessments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAssessment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create",
+        "tags": [
+          "learning-assessments"
+        ]
+      }
+    },
+    "/api/v1/learning-assessments/current": {
+      "get": {
+        "operationId": "current_api_v1_learning_assessments_current_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Current",
+        "tags": [
+          "learning-assessments"
+        ]
+      }
+    },
+    "/api/v1/learning-assessments/{assessment_id}/answers": {
+      "put": {
+        "operationId": "save_answers_api_v1_learning_assessments__assessment_id__answers_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assessment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assessment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Answers"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Answers",
+        "tags": [
+          "learning-assessments"
+        ]
+      }
+    },
+    "/api/v1/learning-assessments/{assessment_id}/submit": {
+      "post": {
+        "operationId": "submit_api_v1_learning_assessments__assessment_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assessment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assessment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Answers"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit",
+        "tags": [
+          "learning-assessments"
         ]
       }
     }
