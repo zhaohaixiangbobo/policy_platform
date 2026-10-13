@@ -1,0 +1,17 @@
+{
+  "description": "P5候选摘要锁；必须通过ARM64 manifest预检才允许构建，目标机64KB页实测另行验收",
+  "platform": "linux/arm64",
+  "sources": {
+    "python": "python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+    "node": "node:22.23.2-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9",
+    "nginx": "nginx:stable-bookworm@sha256:552e7481ca93ffccd046aa658dbbed22caefbc09c66fa7cd247cbb90b8a5c609",
+    "postgres": "postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3",
+    "qdrant": "qdrant/qdrant@sha256:057ee3a8da769fe7310dd3537b4dc7583bf87a95ce8ac43c0af5a46bc580d1fc"
+  },
+  "outputs": {
+    "backend": "policy-platform/backend:p5-20261012-arm64",
+    "web": "policy-platform/web:p5-20261012-arm64",
+    "postgres": "policy-platform/postgres:17.11-p5-arm64",
+    "qdrant": "policy-platform/qdrant:p5-20261012-arm64"
+  }
+}

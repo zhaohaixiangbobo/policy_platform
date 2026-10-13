@@ -213,7 +213,7 @@ class ReviewService:
                     reviewer_user_id,
                     job.initial_document_status,
                 )
-                with KnowledgeMetadataService(self.management.paths.database_path) as knowledge:
+                with KnowledgeMetadataService(self.management.paths.database_url) as knowledge:
                     try:
                         MetadataApplicationService(
                             self.session, knowledge, self.ingestion

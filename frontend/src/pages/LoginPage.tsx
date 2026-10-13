@@ -8,6 +8,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
 import { UiIcon } from '../components/UiIcon';
+import { portalEnabled, safeReturn } from '../portal/config';
 
 const capabilities = [
   { icon: SafetyCertificateOutlined, title: '权威规范', text: '制度原文权威准确' },
@@ -26,8 +27,9 @@ export function LoginPage() {
     try {
       const user = await auth.login(values.username, values.password);
       message.success(`欢迎，${user.display_name}`);
-      const target = user.must_change_password ? '/change-password' : ((location.state as { from?: string } | null)?.from ?? '/admin/jobs');
-      navigate(target, { replace: true });
+      const returnTo = safeReturn((location.state as { from?: string } | null)?.from, portalEnabled ? '/' : '/admin/jobs');
+      const target = user.must_change_password ? '/change-password' : returnTo;
+      navigate(target, { replace: true, state: { from: returnTo } });
     } catch (error) {
       message.error(error instanceof Error ? error.message : '登录失败');
     } finally {
@@ -38,12 +40,12 @@ export function LoginPage() {
   return (
     <main className="login-page">
       <header className="login-header">
-        <div className="login-brand"><span className="brand-mark"><UiIcon icon={FileProtectOutlined} /></span><strong>制度知识智能服务平台</strong></div>
+        <div className="login-brand"><span className="brand-mark"><UiIcon icon={FileProtectOutlined} /></span><strong>制度管理模块</strong></div>
         <Space size={8}><Badge status="success" /><Typography.Text>平台服务正常</Typography.Text></Space>
       </header>
       <section className="login-content">
         <div className="login-intro">
-          <Typography.Title level={1}>制度知识智能服务平台</Typography.Title>
+          <Typography.Title level={1}>制度管理模块</Typography.Title>
           <Typography.Paragraph className="login-subtitle">查制度 · 问条款 · 找依据</Typography.Paragraph>
           <div className="login-capabilities">
             {capabilities.map((item) => (
@@ -74,7 +76,7 @@ export function LoginPage() {
           <Alert className="four-a-notice" type="info" showIcon message="4A/SSO 接口已预留，当前由本地账号完成身份认证。" />
         </Card>
       </section>
-      <footer className="login-footer">© 2026 制度知识智能服务平台</footer>
+      <footer className="login-footer">© 2026 制度管理模块</footer>
     </main>
   );
 }

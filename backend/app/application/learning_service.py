@@ -88,6 +88,9 @@ class LearningService:
             raise ValueError("已有生成任务，请等待完成")
         row.task_id, row.task_state = request_id, "GENERATING"
         row.task_created_at, row.claimed_at = utc_now(), None
+        # 新任务使上一代执行者立即失效；代次只递增，避免ABA复用。
+        row.lease_generation = (row.lease_generation or 0) + 1
+        row.lease_owner = row.lease_expires_at = row.heartbeat_at = None
         row.pending_json = encode({"source": source, "counts": counts})
         row.progress, row.error_message = "等待自测Worker领取", None
         self.session.commit()

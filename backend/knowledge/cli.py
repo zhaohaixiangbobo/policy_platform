@@ -13,6 +13,7 @@ import os
 import shutil
 from pathlib import Path
 from typing import Any
+from dotenv import load_dotenv
 
 from .chunking.chunker import ChunkerConfig, PolicyChunker
 from .chunking.review import ChunkReviewService
@@ -27,11 +28,12 @@ from .rag.runtime import RagRuntime, RagRuntimeSettings
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(os.getenv("PLATFORM_ENV_FILE", str(PROJECT_ROOT / ".env")), override=False)
 
 
 def default_data_root() -> Path:
     return Path(
-        os.getenv("POLICY_KNOWLEDGE_DATA_ROOT", PROJECT_ROOT / "var" / "knowledge")
+        os.getenv("PLATFORM_KNOWLEDGE_DATA_ROOT", PROJECT_ROOT / "var" / "knowledge")
     ).resolve()
 
 
@@ -127,6 +129,9 @@ def import_document(paths: KnowledgePaths, source: Path) -> dict[str, Any]:
 
 
 def run(args: argparse.Namespace) -> Any:
+    # 命令行与服务使用相同的独立迁移版本，避免直接运行未初始化库。
+    from app.infrastructure.db.readiness import check_readiness
+    check_readiness()
     paths = KnowledgePaths(args.data_root)
     if args.command == "import":
         return import_document(paths, args.source)
@@ -135,7 +140,7 @@ def run(args: argparse.Namespace) -> Any:
         if not source.is_absolute():
             source = paths.source_documents / source
         with PolicyParserPipeline(
-            paths.database_path,
+            paths.database_url,
             paths.data_root,
             ParserConfig(
                 render_pdf=not args.no_render,
@@ -144,7 +149,7 @@ def run(args: argparse.Namespace) -> Any:
         ) as pipeline:
             return pipeline.parse(source)
     if args.command == "review-parse":
-        with ReviewService(paths.database_path) as service:
+        with ReviewService(paths.database_url) as service:
             if args.approve_run:
                 return service.approve_run(args.run_id, args.reviewed_by, args.comment)
             if args.target_type is None or args.target_id is None or args.action is None:
@@ -159,7 +164,7 @@ def run(args: argparse.Namespace) -> Any:
                 corrected_value=args.corrected_value,
             )
     if args.command == "chunk":
-        with PolicyChunker(paths.database_path, ChunkerConfig()) as chunker:
+        with PolicyChunker(paths.database_url, ChunkerConfig()) as chunker:
             if args.all_active:
                 return chunker.run_all_active(activate=args.activate)
             if args.document_id is not None:
@@ -170,7 +175,7 @@ def run(args: argparse.Namespace) -> Any:
                 activate=args.activate,
             )
     if args.command == "review-chunk":
-        with ChunkReviewService(paths.database_path) as service:
+        with ChunkReviewService(paths.database_url) as service:
             if args.approve_run:
                 return service.approve_run(args.run_id, args.reviewed_by, args.comment)
             if args.reject_run:
@@ -193,15 +198,11 @@ def run(args: argparse.Namespace) -> Any:
             model_revision=args.embedding_revision,
             dimension=2560,
         )
-        config = IndexConfig(
-            profile_name="policy_platform_dense",
-            alias_name="policy_platform_dense_active",
-            collection_prefix="policy_platform_dense",
-        )
+        config = IndexConfig.from_environment()
         embedding = OpenAIEmbeddingClient(args.embedding_url, contract)
         store = QdrantVectorStore(args.qdrant_url)
         with PolicyIndexer(
-            paths.database_path,
+            paths.database_url,
             embedding_client=embedding,
             vector_store=store,
             contract=contract,
@@ -211,7 +212,7 @@ def run(args: argparse.Namespace) -> Any:
                 return indexer.activate(args.activate_run)
             return indexer.build(activate=args.publish)
     if args.command == "query":
-        settings = RagRuntimeSettings.from_environment(db_path=paths.database_path)
+        settings = RagRuntimeSettings.from_environment(database_url=paths.database_url)
         with RagRuntime(settings) as runtime:
             return runtime.query(args.question, include_debug=args.debug).to_dict(
                 include_debug=args.debug

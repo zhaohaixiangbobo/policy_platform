@@ -1,0 +1,80 @@
+# 文件说明：API/两类Worker/显式迁移共用镜像；业务文件仅存储于独立卷。
+# 下载源参数均可选，默认官方源，与P4本地构建一致；任何下载源都不跳过签名或SHA256校验。
+ARG PYTHON_IMAGE=python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+FROM ${PYTHON_IMAGE}
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8 \
+    PYTHONPATH=/app/backend HOME=/tmp \
+    POLICY_LIBREOFFICE_UNO_PYTHON=/opt/libreoffice26.8/program/python \
+    POLICY_DOCX_RENDER_TIMEOUT_SECONDS=180
+ARG TARGETARCH
+
+# 第一层：系统依赖。主仓库与security仓库分开配置，留空即官方源。
+# 下载的deb放在BuildKit缓存挂载中：不进入镜像；失败重试时复用已下载且哈希一致的包；
+# sharing=locked使同id的并发构建串行访问。基础镜像docker-clean会删除/var/cache/apt/archives，
+# 故改用独立归档目录。源配置在本层结束前恢复为官方，最终镜像不残留镜像站地址。
+ARG DEBIAN_MIRROR=
+ARG DEBIAN_SECURITY_MIRROR=
+RUN --mount=type=bind,source=deploy/apt-sources.sh,target=/tmp/apt-sources.sh \
+    --mount=type=cache,id=policy-backend-apt-${TARGETARCH},target=/var/cache/policy-apt,sharing=locked \
+    set -eu; \
+    sh /tmp/apt-sources.sh apply; \
+    apt_opts="-o Acquire::Retries=5 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 -o Dir::Cache::Archives=/var/cache/policy-apt/archives -o APT::Keep-Downloaded-Packages=true"; \
+    mkdir -p /var/cache/policy-apt/archives/partial; \
+    apt-get $apt_opts update; \
+    apt-get $apt_opts install -y --no-install-recommends \
+      curl ca-certificates fontconfig fonts-noto-cjk \
+      libxinerama1 libdbus-1-3 libcairo2 libcups2 libnss3 libglib2.0-0 libx11-xcb1 \
+      libxrender1 libxext6 libsm6 libice6 libxrandr2 libgl1 libxml2; \
+    sh /tmp/apt-sources.sh restore; \
+    rm -rf /var/lib/apt/lists/*
+
+# 第二层：LibreOffice。版本与按架构的SHA256固定在本层，不接受参数覆盖；
+# LIBREOFFICE_BASE_URL只更换下载来源（须为https且保持官方归档目录结构），校验失败即中止。
+# 已校验的安装包保存在缓存挂载中，本层失败重做时无需重新下载，也不触发apt层重做。
+ARG LIBREOFFICE_BASE_URL=
+RUN --mount=type=cache,id=policy-backend-libreoffice-${TARGETARCH},target=/var/cache/policy-libreoffice,sharing=locked \
+    set -eu; \
+    version=26.8.1.1; \
+    case "$TARGETARCH" in \
+      amd64) dir=x86_64; pkg=x86-64; sum=30903df3b9f61360d9660cd707de48cd2831469114492a5008ed58a0ac77d044 ;; \
+      arm64) dir=aarch64; pkg=aarch64; sum=1b069c20dd237f6decad3ea02cb02f39fdf458b03d09c2a9facb7b9b71e6a27a ;; \
+      *) echo "unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    base="${LIBREOFFICE_BASE_URL:-https://downloadarchive.documentfoundation.org/libreoffice/old}"; \
+    case "$base" in https://*) ;; *) echo "LIBREOFFICE_BASE_URL must be https: $base" >&2; exit 1 ;; esac; \
+    file="LibreOffice_${version}_Linux_${pkg}_deb.tar.gz"; \
+    cached="/var/cache/policy-libreoffice/$file"; \
+    if [ -f "$cached" ] && echo "$sum  $cached" | sha256sum -c - >/dev/null 2>&1; then \
+      echo "[libreoffice] reuse verified cache $file"; \
+    else \
+      rm -f "$cached" "$cached.part"; \
+      echo "[libreoffice] download ${base%/}/$version/deb/$dir/$file"; \
+      curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
+        "${base%/}/$version/deb/$dir/$file" -o "$cached.part"; \
+      echo "$sum  $cached.part" | sha256sum -c -; \
+      mv "$cached.part" "$cached"; \
+    fi; \
+    echo "$sum  $cached" | sha256sum -c -; \
+    mkdir /tmp/lo; \
+    tar -xzf "$cached" -C /tmp/lo; \
+    dpkg -i /tmp/lo/LibreOffice_*_deb/DEBS/*.deb; \
+    ln -s /opt/libreoffice26.8/program/soffice /usr/local/bin/soffice; \
+    soffice --version | grep -F "LibreOffice $version "; \
+    rm -rf /tmp/lo
+
+# 第三层：Python依赖。PYPI_INDEX_URL留空即PyPI官方；参数名避开pip会自动读取的PIP_INDEX_URL。
+ARG PYPI_INDEX_URL=
+COPY backend/requirements.txt /app/backend/requirements.txt
+RUN set -eu; \
+    case "$PYPI_INDEX_URL" in ""|https://*) ;; *) echo "PYPI_INDEX_URL must be https: $PYPI_INDEX_URL" >&2; exit 1 ;; esac; \
+    if [ -n "$PYPI_INDEX_URL" ]; then echo "[pip] index=$PYPI_INDEX_URL"; set -- --index-url "$PYPI_INDEX_URL"; \
+    else echo "[pip] index=https://pypi.org/simple"; set --; fi; \
+    python -m pip install --no-cache-dir --retries 5 --timeout 60 "$@" -r /app/backend/requirements.txt
+RUN groupadd --gid 10001 platform && useradd --uid 10001 --gid 10001 --no-create-home platform \
+    && mkdir -p /data/knowledge /data/materials /logs \
+    && chown -R 10001:10001 /data /logs
+COPY backend /app/backend
+COPY scripts /app/scripts
+WORKDIR /app/backend
+USER 10001:10001
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8020", "--no-proxy-headers"]

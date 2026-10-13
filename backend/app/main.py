@@ -16,7 +16,7 @@ from knowledge.config import KnowledgePaths
 from knowledge.management import KnowledgeManagementService
 from knowledge.rag.runtime import RagRuntimeSettings
 from knowledge.service import KnowledgeService, KnowledgeServiceError
-from app.application.auth_service import ensure_auth_baseline
+from app.infrastructure.db.readiness import check_readiness
 from app.application.query_scope_service import OpenDocumentAccessResolver
 from app.infrastructure.db.session import get_session_factory
 
@@ -37,12 +37,9 @@ async def lifespan(application: FastAPI):
         backup_count=int(os.getenv("PLATFORM_API_LOG_BACKUP_COUNT", "5")),
     )
     paths = KnowledgePaths(settings.knowledge_data_root)
-    # 空库首次启动也必须得到稳定目录和独立索引配置，不依赖迁移测试数据。
-    KnowledgeManagementService(paths).initialize_empty_baseline()
-    with get_session_factory()() as session:
-        ensure_auth_baseline(session)
+    check_readiness()
     knowledge_service = KnowledgeService(
-        RagRuntimeSettings.from_environment(db_path=paths.database_path)
+        RagRuntimeSettings.from_environment(database_url=paths.database_url)
     )
     application.state.knowledge_catalog = KnowledgeCatalogService(paths)
     application.state.document_access_resolver = OpenDocumentAccessResolver()

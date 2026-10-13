@@ -1,0 +1,20 @@
+# 文件说明：可选本地覆盖，复用旧Qdrant服务但用新命名空间；不启动独立qdrant服务。
+# 首次索引前选择一种模式，已有索引后不得仅通过修改URL切换存储。
+x-external: &external
+  extra_hosts: ['host.docker.internal:host-gateway']
+  volumes:
+    - {type: bind, source: ./var/compose-p4/runtime-external.env, target: /run/config/runtime.env, read_only: true, bind: {create_host_path: false}}
+    - knowledge_files:/data/knowledge
+    - material_files:/data/materials
+    - app_logs:/logs
+services:
+  qdrant:
+    profiles: [internal-qdrant]
+  api:
+    <<: *external
+  ingestion-worker:
+    <<: *external
+  learning-worker:
+    <<: *external
+  initialize:
+    <<: *external

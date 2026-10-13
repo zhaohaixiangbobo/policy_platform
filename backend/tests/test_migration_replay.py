@@ -53,7 +53,7 @@ def test_empty_and_incremental_replay(tmp_path):
         migrate(path, "upgrade", "head")
         migrate(path, "upgrade", "head")
         with engine.connect() as connection:
-            assert connection.scalar(sa.text("select version_num from alembic_version")) == "0011_learning_assessment"
+            assert connection.scalar(sa.text("select version_num from alembic_version")) == "0012_supporting_materials"
             assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
         # 回退只删除所属表，外部表仍保留；重新建库也应成功。
         with engine.begin() as connection:

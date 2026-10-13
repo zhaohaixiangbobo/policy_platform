@@ -44,10 +44,66 @@ class LearningAssessmentSlot(Base):
     task_state: Mapped[str | None] = mapped_column(String(20))
     task_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_owner: Mapped[str | None] = mapped_column(String(100))
+    lease_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pending_json: Mapped[str | None] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"))
     progress: Mapped[str | None] = mapped_column(String(200))
     error_message: Mapped[str | None] = mapped_column(String(300))
     __mapper_args__ = {"version_id_col": version}
+
+
+class SupportingMaterial(Base):
+    """配套资料身份；原始材料指纹去重，发布与编辑指针隔离。"""
+    __tablename__ = "supporting_material"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_text)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    state: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    latest_revision_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    published_revision_id: Mapped[str | None] = mapped_column(String(36))
+    created_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    __mapper_args__ = {"version_id_col": version}
+
+
+class MaterialRevision(Base):
+    """资料发布快照；payload承载类型字段，检索列由服务确定性生成。"""
+    __tablename__ = "material_revision"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_text)
+    material_id: Mapped[str] = mapped_column(ForeignKey("supporting_material.id"), nullable=False)
+    revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT")
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    domains: Mapped[str] = mapped_column(String(500), nullable=False)
+    keywords: Mapped[str] = mapped_column(String(1000), nullable=False)
+    source_unit: Mapped[str] = mapped_column(String(200), nullable=False)
+    source_category: Mapped[str] = mapped_column(String(50), nullable=False)
+    region: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    search_text: Mapped[str] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (UniqueConstraint("material_id", "revision_no", name="uq_material_revision_no"),)
+
+
+class MaterialImportBatch(Base):
+    """带所有者与有效期的Excel预览；确认幂等，保留来源文件和行号。"""
+    __tablename__ = "material_import_batch"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_text)
+    created_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=False)
+    result_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class LocalCredential(Base):
@@ -307,6 +363,7 @@ class IngestionJob(Base):
     batch_id: Mapped[str | None] = mapped_column(ForeignKey("ingestion_batch.id", ondelete="SET NULL"))
     rework_of_job_id: Mapped[str | None] = mapped_column(ForeignKey("ingestion_job.id", ondelete="SET NULL"))
     lease_owner: Mapped[str | None] = mapped_column(String(100))
+    lease_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[str] = mapped_column(ForeignKey("user_account.id", ondelete="RESTRICT"), nullable=False)
@@ -356,6 +413,10 @@ class IndexPublicationRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_owner: Mapped[str | None] = mapped_column(String(100))
+    lease_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (Index("ix_index_publication_status", "status", "updated_at"),)
 
 

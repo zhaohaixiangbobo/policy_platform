@@ -14,12 +14,16 @@ import { DiagnosticDetailPage } from '../pages/DiagnosticDetailPage';
 import { DocumentDetailPage } from '../pages/DocumentDetailPage';
 import { DocumentsPage } from '../pages/DocumentsPage';
 import { LearningAssessmentPage } from '../pages/LearningAssessmentPage';
+import { MaterialsPage } from '../pages/MaterialsPage';
 import { HomePage } from '../pages/HomePage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { PdfEntryPage } from '../pages/PdfEntryPage';
 import { LoginPage } from '../pages/LoginPage';
 import { ChangePasswordPage } from '../pages/ChangePasswordPage';
 import { RequireAdmin, RequireAuthenticated } from '../auth/AuthContext';
+import { RequirePolicy } from '../auth/AuthContext';
+import { portalEnabled } from '../portal/config';
+import { PortalPage, PortalLoginPage, ModulePlaceholderPage } from '../portal/PortalPages';
 import { ManagementLayout } from '../layouts/ManagementLayout';
 import { TaskCenterPage } from '../pages/admin/TaskCenterPage';
 import { ReviewWorkbenchPage } from '../pages/admin/ReviewWorkbenchPage';
@@ -30,7 +34,12 @@ const RelationsPage = lazy(() => import('../pages/admin/RelationsPage').then((mo
 const KnowledgeGovernancePage = lazy(() => import('../pages/admin/KnowledgeGovernancePage').then((module) => ({ default: module.KnowledgeGovernancePage })));
 
 export const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
+  { path: '/login', element: portalEnabled ? <PortalLoginPage /> : <LoginPage /> },
+  { path: '/portal/login', element: <LoginPage /> },
+  ...(portalEnabled ? [{ element: <RequireAuthenticated />, children: [
+    { path: '/portal', element: <PortalPage /> },
+    { path: '/portal/modules/:moduleId', element: <ModulePlaceholderPage /> },
+  ] }] : []),
   { element: <RequireAuthenticated />, children: [{ path: '/change-password', element: <ChangePasswordPage /> }] },
   {
     element: <RequireAdmin />,
@@ -49,13 +58,14 @@ export const router = createBrowserRouter([
     }],
   },
   {
-    element: <RequireAuthenticated />,
+    element: <RequirePolicy />,
     children: [{
       path: '/',
       element: <BasicLayout />,
       children: [
       { index: true, element: <HomePage /> },
       { path: 'learning', element: <LearningAssessmentPage /> },
+      { path: 'materials', element: <MaterialsPage /> },
       {
         path: 'chat',
         element: <ChatPage />,

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -193,6 +195,21 @@ class IndexConfig:
     point_schema_version: str = "policy_point_v1"
     strict_source_freshness: bool = True
     indexer_version: str = "1.0.0"
+
+    @classmethod
+    def from_environment(cls) -> "IndexConfig":
+        """统一运行命名空间；新环境必须完整声明三项，避免混用旧Alias。"""
+        names = ("POLICY_INDEX_PROFILE", "POLICY_INDEX_ALIAS", "POLICY_COLLECTION_PREFIX")
+        defaults = (cls.profile_name, cls.alias_name, cls.collection_prefix)
+        values = tuple(os.getenv(name, default) for name, default in zip(names, defaults))
+        if values != defaults:
+            if not all(os.getenv(name) for name in names):
+                raise ValueError("独立索引命名空间必须完整配置profile、alias、collection_prefix")
+            if any(value == default for value, default in zip(values, defaults)):
+                raise ValueError("新命名空间不得复用旧profile、Alias或collection前缀")
+        if not all(re.fullmatch(r"[A-Za-z0-9_-]+", value) for value in values):
+            raise ValueError("索引命名空间仅允许字母、数字、下划线和短横线")
+        return cls(profile_name=values[0], alias_name=values[1], collection_prefix=values[2])
 
     def __post_init__(self) -> None:
         if not self.profile_name.strip() or not self.alias_name.strip():

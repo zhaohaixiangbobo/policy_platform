@@ -5,6 +5,8 @@ import logging
 import os
 import random
 import re
+import time
+import requests
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Literal
@@ -12,7 +14,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError
 from knowledge.rag.config import GenerationConfig, GeneratorContract
-from knowledge.rag.generator import OpenAIGeneratorClient
+from knowledge.rag.generator import OpenAIGeneratorClient, GeneratorTransportError
 
 LOGGER = logging.getLogger("policy_platform.learning")
 
@@ -100,6 +102,49 @@ def model_client():
 
 
 def _ask(client, schema, system: str, payload: dict):
+    """单次生成或审校最多尝试三次；保留已通过题目，只重试当前调用。"""
+    stage = "generate" if schema is CandidateBatch else "review"
+    slot = payload["assignments"][0]["slot"]
+    for attempt in range(1, 4):
+        started = time.perf_counter()
+        try:
+            return _ask_once(client, schema, system, payload)
+        except GeneratorTransportError as exc:
+            kind, status, cause = transport_failure(exc)
+            retry = attempt < 3 and kind in {"connection", "timeout", "busy", "unavailable"}
+            LOGGER.warning(
+                "event=learning_model_failed task_id=%s stage=%s slot=%s attempt=%s elapsed_ms=%s kind=%s status=%s cause=%s retry=%s",
+                getattr(client, "learning_task_id", "-"), stage, slot, attempt,
+                round((time.perf_counter() - started) * 1000), kind, status, cause, retry)
+            if not retry:
+                raise
+            # 学习生成共享客户端并发调用，重试不关闭其他线程正在使用的 Session。
+            time.sleep(attempt)
+
+
+def transport_failure(exc):
+    """只提取安全的分类和状态码，异常正文可能含模型输出，禁止写入日志。"""
+    chain = []
+    current = exc
+    while current is not None and id(current) not in {id(item) for item in chain}:
+        chain.append(current)
+        current = current.__cause__
+    status = next((getattr(item, "status_code", None) for item in chain
+                   if getattr(item, "status_code", None) is not None), None)
+    if any(isinstance(item, requests.Timeout) for item in chain):
+        kind = "timeout"
+    elif any(isinstance(item, requests.ConnectionError) for item in chain):
+        kind = "connection"
+    elif status == 429:
+        kind = "busy"
+    elif status in {500, 502, 503, 504}:
+        kind = "unavailable"
+    else:
+        kind = "response"
+    return kind, status, type(chain[-1]).__name__
+
+
+def _ask_once(client, schema, system: str, payload: dict):
     # 不显式传max_tokens，交由客户端回退到LearningGenerationConfig.max_tokens（2048）。
     response = client.generate([
         {"role": "system", "content": system},

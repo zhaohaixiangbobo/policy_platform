@@ -65,6 +65,34 @@
         "title": "AuthProviderSummary",
         "type": "object"
       },
+      "BatchAction": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "PUBLISH",
+              "OFFLINE"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialAction"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "action",
+          "items"
+        ],
+        "title": "BatchAction",
+        "type": "object"
+      },
       "BatchCreateRequest": {
         "properties": {
           "name": {
@@ -139,6 +167,20 @@
         "title": "Body_create_rework_job_api_v1_admin_jobs__job_id__rework_post",
         "type": "object"
       },
+      "Body_preview_api_v1_materials_imports_preview_post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_preview_api_v1_materials_imports_preview_post",
+        "type": "object"
+      },
       "Body_upload_batch_job_api_v1_admin_batches__batch_id__jobs_post": {
         "properties": {
           "file": {
@@ -161,6 +203,100 @@
           "file"
         ],
         "title": "Body_upload_batch_job_api_v1_admin_batches__batch_id__jobs_post",
+        "type": "object"
+      },
+      "Body_upload_image_api_v1_materials_images_post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "metadata": {
+            "default": "{}",
+            "title": "Metadata",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_image_api_v1_materials_images_post",
+        "type": "object"
+      },
+      "CaseFields": {
+        "additionalProperties": false,
+        "properties": {
+          "age": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Age",
+            "type": "string"
+          },
+          "domains": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Domains",
+            "type": "array"
+          },
+          "original": {
+            "maxLength": 30000,
+            "minLength": 1,
+            "title": "Original",
+            "type": "string"
+          },
+          "outcome": {
+            "default": "",
+            "maxLength": 10000,
+            "title": "Outcome",
+            "type": "string"
+          },
+          "person_category": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Person Category",
+            "type": "string"
+          },
+          "political_status": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Political Status",
+            "type": "string"
+          },
+          "position": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Position",
+            "type": "string"
+          },
+          "problem_types": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Problem Types",
+            "type": "array"
+          },
+          "rank": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Rank",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "original"
+        ],
+        "title": "CaseFields",
         "type": "object"
       },
       "ChangePasswordRequest": {
@@ -1928,6 +2064,39 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "ImageFields": {
+        "additionalProperties": false,
+        "properties": {
+          "summary": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "tags",
+          "summary"
+        ],
+        "title": "ImageFields",
+        "type": "object"
+      },
       "IndexPublicationCreateRequest": {
         "properties": {
           "document_ids": {
@@ -2257,6 +2426,28 @@
           "expires_at"
         ],
         "title": "LoginResponse",
+        "type": "object"
+      },
+      "MaterialAction": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "expected_version"
+        ],
+        "title": "MaterialAction",
         "type": "object"
       },
       "MessageFeedbackCreate": {
@@ -3606,6 +3797,33 @@
           "counts"
         ],
         "title": "ReviewQueuePage",
+        "type": "object"
+      },
+      "SaveMaterial": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaseFields"
+              },
+              {
+                "$ref": "#/components/schemas/ImageFields"
+              }
+            ],
+            "title": "Fields"
+          }
+        },
+        "required": [
+          "expected_version",
+          "fields"
+        ],
+        "title": "SaveMaterial",
         "type": "object"
       },
       "SelectedDocumentSelection": {
@@ -7257,6 +7475,56 @@
         ]
       }
     },
+    "/api/v1/learning-assessments/{assessment_id}/questions/{question_id}/materials": {
+      "get": {
+        "operationId": "question_materials_api_v1_learning_assessments__assessment_id__questions__question_id__materials_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assessment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assessment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "question_id",
+            "required": true,
+            "schema": {
+              "title": "Question Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Question Materials",
+        "tags": [
+          "learning-assessments"
+        ]
+      }
+    },
     "/api/v1/learning-assessments/{assessment_id}/submit": {
       "post": {
         "operationId": "submit_api_v1_learning_assessments__assessment_id__submit_post",
@@ -7305,6 +7573,507 @@
         "summary": "Submit",
         "tags": [
           "learning-assessments"
+        ]
+      }
+    },
+    "/api/v1/materials": {
+      "get": {
+        "operationId": "listing_api_v1_materials_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "",
+              "enum": [
+                "",
+                "CASE",
+                "IMAGE"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "default": "PUBLISHED",
+              "enum": [
+                "",
+                "DRAFT",
+                "PUBLISHED",
+                "OFFLINE"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 100,
+              "title": "Domain",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "updated",
+              "enum": [
+                "updated",
+                "published",
+                "relevance"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Listing",
+        "tags": [
+          "materials"
+        ]
+      }
+    },
+    "/api/v1/materials/actions": {
+      "post": {
+        "operationId": "actions_api_v1_materials_actions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Actions",
+        "tags": [
+          "materials"
+        ]
+      }
+    },
+    "/api/v1/materials/case-template": {
+      "get": {
+        "operationId": "template_api_v1_materials_case_template_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Template",
+        "tags": [
+          "materials"
+        ]
+      }
+    },
+    "/api/v1/materials/images": {
+      "post": {
+        "operationId": "upload_image_api_v1_materials_images_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_image_api_v1_materials_images_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Image",
+        "tags": [
+          "materials"
+        ]
+      }
+    },
+    "/api/v1/materials/imports/preview": {
+      "post": {
+        "operationId": "preview_api_v1_materials_imports_preview_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_preview_api_v1_materials_imports_preview_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview",
+        "tags": [
+          "materials"
+        ]
+      }
+    },
+    "/api/v1/materials/imports/{batch_id}/confirm": {
+      "post": {
+        "operationId": "confirm_api_v1_materials_imports__batch_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm",
+        "tags": [
+          "materials"
+        ]
+      }
+    },
+    "/api/v1/materials/recommendations": {
+      "get": {
+        "operationId": "recommendations_api_v1_materials_recommendations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 2000,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "CASE",
+                    "IMAGE"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recommendations",
+        "tags": [
+          "materials"
+        ]
+      }
+    },
+    "/api/v1/materials/{material_id}": {
+      "get": {
+        "operationId": "detail_api_v1_materials__material_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "title": "Material Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revision Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Detail",
+        "tags": [
+          "materials"
+        ]
+      },
+      "put": {
+        "operationId": "save_api_v1_materials__material_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "title": "Material Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveMaterial"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save",
+        "tags": [
+          "materials"
+        ]
+      }
+    },
+    "/api/v1/materials/{material_id}/revisions/{revision_id}/file": {
+      "get": {
+        "operationId": "image_file_api_v1_materials__material_id__revisions__revision_id__file_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "title": "Material Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Image File",
+        "tags": [
+          "materials"
         ]
       }
     }

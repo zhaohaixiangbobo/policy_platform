@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..indexing.config import EmbeddingContract, RerankConfig, RerankerContract
+from ..indexing.config import EmbeddingContract, IndexConfig, RerankConfig, RerankerContract
 from ..indexing.database import IndexDatabase
 from ..indexing.embedding import OpenAIEmbeddingClient
 from ..indexing.qdrant_store import QdrantVectorStore
@@ -46,7 +46,7 @@ def _environment_bool(name: str, default: bool) -> bool:
 class RagRuntimeSettings:
     """不包含密钥的运行时服务地址与模型契约参数。"""
 
-    db_path: Path = Path(".policy_parser_output/policy_parser.db")
+    database_url: str = ""
     qdrant_url: str = "http://127.0.0.1:6333"
     embedding_url: str = "http://10.9.7.1:8001/v1/embeddings"
     embedding_model: str = "qwen3-embedding-4b"
@@ -65,7 +65,7 @@ class RagRuntimeSettings:
         """读取非密钥环境变量；显式参数优先于环境变量。"""
 
         defaults: dict[str, Any] = {
-            "db_path": Path(os.getenv("POLICY_DB_PATH", ".policy_parser_output/policy_parser.db")),
+            "database_url": os.getenv("KNOWLEDGE_DATABASE_URL", ""),
             "qdrant_url": os.getenv("POLICY_QDRANT_URL", "http://127.0.0.1:6333"),
             "embedding_url": os.getenv(
                 "POLICY_EMBEDDING_URL", "http://10.9.7.1:8001/v1/embeddings"
@@ -88,7 +88,7 @@ class RagRuntimeSettings:
             "generator_revision": os.getenv(
                 "POLICY_GENERATOR_REVISION", "deployment-unreported"
             ),
-            "profile_name": os.getenv("POLICY_INDEX_PROFILE", "policy_platform_dense"),
+            "profile_name": IndexConfig.from_environment().profile_name,
             "quality_gate_enabled": _environment_bool(
                 "POLICY_QUALITY_GATE_ENABLED", False
             ),
@@ -100,7 +100,7 @@ class RagRuntimeSettings:
         """返回可写入压测清单的非敏感配置。"""
 
         return {
-            "db_path": str(self.db_path.resolve()),
+            "database": "knowledge-postgresql",
             "qdrant_url": self.qdrant_url,
             "embedding_url": self.embedding_url,
             "embedding_model": self.embedding_model,
@@ -157,7 +157,7 @@ class RagRuntime:
                 stack.callback(close_store)
             self.dense = stack.enter_context(
                 DenseRetriever(
-                    settings.db_path,
+                    settings.database_url,
                     embedding_client=self.embedding,
                     vector_store=self.store,
                     contract=self.embedding_contract,
@@ -172,7 +172,7 @@ class RagRuntime:
                     api_key=os.getenv("POLICY_RERANK_API_KEY"),
                 )
             )
-            self.database = stack.enter_context(IndexDatabase(settings.db_path))
+            self.database = stack.enter_context(IndexDatabase(settings.database_url))
             self.generator = stack.enter_context(
                 OpenAIGeneratorClient(
                     self.generator_contract,

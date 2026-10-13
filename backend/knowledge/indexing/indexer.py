@@ -1,10 +1,14 @@
 """正式索引构建、校验和发布流程。
 
 流程冻结全部 active ChunkRun，生成确定性 point，写入不可见的版本化 collection，
-全量核验后才切换 alias 和 SQLite active IndexRun。失败运行不会影响既有 active 索引。
+全量核验后才切换 alias 和 Knowledge active IndexRun。失败运行不会影响既有 active 索引。
 """
 
 from __future__ import annotations
+
+from sqlalchemy import text as sql_text, select, update, insert, bindparam
+from knowledge.storage.schema import metadata as knowledge_metadata
+
 
 import math
 from dataclasses import asdict
@@ -15,6 +19,8 @@ from uuid import NAMESPACE_URL, uuid5
 from .config import EmbeddingContract, IndexConfig, canonical_json, sha256_text
 from .database import IndexDatabase, utc_now
 from .qdrant_store import StoredPoint, VectorPoint
+from .operation_lock import serialized_operation
+from knowledge.storage.execution import check_execution
 
 
 class EmbeddingClient(Protocol):
@@ -55,18 +61,18 @@ class PolicyIndexer:
 
     def __init__(
         self,
-        database_path: Path,
+        database_url: str,
         *,
         embedding_client: EmbeddingClient,
         vector_store: VectorStore,
         contract: EmbeddingContract | None = None,
         config: IndexConfig | None = None,
     ) -> None:
-        self.db = IndexDatabase(database_path)
+        self.db = IndexDatabase(database_url)
         self.embedding_client = embedding_client
         self.vector_store = vector_store
         self.contract = contract or EmbeddingContract()
-        self.config = config or IndexConfig()
+        self.config = config or IndexConfig.from_environment()
 
     def close(self) -> None:
         self.db.close()
@@ -77,6 +83,7 @@ class PolicyIndexer:
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         self.close()
 
+    @serialized_operation
     def build(
         self,
         *,
@@ -89,7 +96,7 @@ class PolicyIndexer:
         profile = self.db.get_or_create_profile(
             self.config.profile_name, self.config.alias_name
         )
-        self._reconcile_switching_run(int(profile["id"]))
+        self._assert_no_switching(int(profile["id"]))
         sources = (
             self.db.freeze_exact_sources(frozen_sources)
             if frozen_sources is not None
@@ -141,9 +148,7 @@ class PolicyIndexer:
 
     def _assert_storage_available(self, run: dict[str, Any], *, require_collection: bool = True) -> None:
         """历史成功与物理可用分离；已清理运行必须显式恢复后才能再次使用。"""
-        retired = self.db.connection.execute(
-            "SELECT state FROM index_storage_retirement WHERE index_run_id=?", (run["id"],)
-        ).fetchone()
+        retired = self.db.repository.run(sql_text('SELECT state FROM index_storage_retirement WHERE index_run_id=:p0'), {'p0': run["id"]}).mappings().fetchone()
         if retired:
             raise ValueError(f"IndexRun {run['id']} 存储已退役（{retired['state']}），请使用新的来源快照构建索引")
         if require_collection:
@@ -201,6 +206,8 @@ class PolicyIndexer:
         self, run_id: int, collection_name: str, batch: Sequence[dict[str, Any]]
     ) -> None:
         record_ids = [int(record["id"]) for record in batch]
+        self._check_operation_lock()
+        check_execution()
         self.db.mark_embedding(record_ids)
         try:
             vectors = self.embedding_client.embed(
@@ -222,6 +229,8 @@ class PolicyIndexer:
                         payload=payload,
                     )
                 )
+            self._check_operation_lock()
+            check_execution()
             self.vector_store.upsert(collection_name, self.contract.vector_name, points)
             for record, vector, payload in zip(batch, vectors, payloads, strict=True):
                 norm = math.sqrt(sum(float(value) ** 2 for value in vector))
@@ -322,12 +331,18 @@ class PolicyIndexer:
 
     def _activate(self, profile_id: int, run_id: int) -> None:
         run = self.db.get_run(run_id)
+        profile = self.db.repository.run(sql_text('SELECT profile_name,alias_name FROM index_profile WHERE id=:p0'), {'p0': profile_id}).mappings().fetchone()
+        if profile is None or profile["profile_name"] != self.config.profile_name or profile["alias_name"] != self.config.alias_name or run["alias_name"] != self.config.alias_name:
+            raise ValueError("IndexRun不属于当前索引命名空间，禁止激活")
         if run["status"] != "succeeded":
             raise ValueError("只有 succeeded IndexRun 才能激活")
         self._assert_storage_available(run)
         if self.config.strict_source_freshness and not self.db.sources_are_current(run_id):
             raise ValueError("IndexRun 来源已不是当前 active ChunkRun")
+        self._assert_no_switching(profile_id)
+        self._check_operation_lock()
         self.db.update_run(run_id, activation_status="switching")
+        check_execution()
         self.vector_store.switch_alias(
             str(run["alias_name"]), str(run["collection_name"])
         )
@@ -336,8 +351,11 @@ class PolicyIndexer:
             raise RuntimeError(
                 f"Alias 切换核验失败：expected={run['collection_name']}, actual={actual}"
             )
+        self._check_operation_lock()
+        check_execution()
         self.db.activate_run(profile_id, run_id)
 
+    @serialized_operation
     def activate(self, run_id: int) -> dict[str, Any]:
         """人工发布已经完成并核验的IndexRun。"""
 
@@ -345,27 +363,42 @@ class PolicyIndexer:
         self._activate(int(run["profile_id"]), run_id)
         return self.summary(run_id)
 
-    def _reconcile_switching_run(self, profile_id: int) -> None:
-        rows = self.db.connection.execute(
-            """
-            SELECT * FROM index_run
-            WHERE profile_id=? AND activation_status='switching'
-            ORDER BY id DESC
-            """,
-            (profile_id,),
-        ).fetchall()
-        for row in rows:
-            target = self.vector_store.alias_target(str(row["alias_name"]))
-            if target == str(row["collection_name"]) and row["status"] == "succeeded":
-                self.db.activate_run(profile_id, int(row["id"]))
-            elif target != str(row["collection_name"]):
-                self.db.update_run(int(row["id"]), activation_status="inactive")
+    def _assert_no_switching(self, profile_id: int) -> None:
+        count = self.db.repository.run(sql_text(
+            "SELECT count(*) FROM index_run WHERE profile_id=:profile AND activation_status='switching'"
+        ), {"profile": profile_id}).scalar_one()
+        if count:
+            raise RuntimeError("存在未收尾的Alias切换；确认旧执行者停止并对账后再发布")
+
+    @serialized_operation
+    def recover_activation(self, run_id: int, *, base_run_id: int | None) -> dict[str, Any]:
+        """仅收尾已经指向目标的Alias，不重新切换；调用方须验证管理员确认及冻结来源。"""
+        run = self.db.get_run(run_id)
+        profile = self.db.repository.run(sql_text("SELECT * FROM index_profile WHERE id=:id"),
+                                         {"id": run["profile_id"]}).mappings().one()
+        if profile["profile_name"] != self.config.profile_name or run["alias_name"] != self.config.alias_name:
+            raise ValueError("恢复目标不属于当前命名空间")
+        if run["status"] != "succeeded" or profile["active_index_run_id"] not in {base_run_id, run_id}:
+            raise ValueError("恢复目标状态或active基线存在冲突")
+        other_switching = self.db.repository.run(sql_text(
+            "SELECT count(*) FROM index_run WHERE profile_id=:profile AND id<>:run AND activation_status='switching'"
+        ), {"profile": run["profile_id"], "run": run_id}).scalar_one()
+        if other_switching:
+            raise ValueError("同一profile存在其他未收尾切换，需人工核查")
+        if self.vector_store.alias_target(self.config.alias_name) != run["collection_name"]:
+            raise ValueError("Alias尚未指向请求目标，保留待人工核查状态")
+        self._assert_storage_available(run)
+        self._verify_run(run_id)
+        self._check_operation_lock()
+        if self.vector_store.alias_target(self.config.alias_name) != run["collection_name"]:
+            raise RuntimeError("恢复核验期间Alias发生变化")
+        if profile["active_index_run_id"] != run_id:
+            self.db.activate_run(int(run["profile_id"]), run_id)
+        return self.summary(run_id)
 
     def summary(self, run_id: int, *, reused: bool = False) -> dict[str, Any]:
         run = self.db.get_run(run_id)
-        profile = self.db.connection.execute(
-            "SELECT * FROM index_profile WHERE id=?", (int(run["profile_id"]),)
-        ).fetchone()
+        profile = self.db.repository.run(sql_text('SELECT * FROM index_profile WHERE id=:p0'), {'p0': int(run["profile_id"])}).mappings().fetchone()
         return {
             "index_run_id": run_id,
             "profile_name": str(profile["profile_name"]),

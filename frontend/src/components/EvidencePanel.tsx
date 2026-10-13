@@ -7,14 +7,13 @@ import {
   FileTextOutlined,
   RightOutlined,
 } from '@ant-design/icons';
-import { Button, Collapse, Empty, Tag, Typography } from 'antd';
+import { Button, Empty, Tag, Typography } from 'antd';
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 import type { CitationSnapshot } from '../types/chat';
 import { documentPdfUrl } from '../utils/pdf';
 import { UiIcon } from './UiIcon';
-import { documentStatusLabel } from '../utils/documentStatus';
+import { documentStatusClass, documentStatusLabel } from '../utils/documentStatus';
 
 interface EvidencePanelProps {
   citation?: CitationSnapshot | null;
@@ -56,7 +55,6 @@ export function EvidencePanel({
   onSelect,
   onClose,
 }: EvidencePanelProps) {
-  const navigate = useNavigate();
   const initial = citation
     ?? citations.find((item) => normalizeLabel(item.label) === normalizeLabel(selectedLabel ?? ''))
     ?? citations[0]
@@ -125,17 +123,20 @@ export function EvidencePanel({
         <section className="evidence-source">
           <Typography.Text strong>来源信息</Typography.Text>
           <dl className="evidence-metadata">
-            <div><dt>制度状态</dt><dd><Tag>{documentStatusLabel(activeCitation.document_status || 'unknown')}</Tag><Typography.Text type="secondary">回答时引用快照的状态</Typography.Text></dd></div>
+            <div><dt>制度状态</dt><dd><Tag className={`document-status-tag ${documentStatusClass(documentStatusLabel(activeCitation.document_status || 'unknown'))}`}>{documentStatusLabel(activeCitation.document_status || 'unknown')}</Tag><Typography.Text type="secondary">回答时引用快照的状态</Typography.Text></dd></div>
             <div><dt>制度文号</dt><dd>{activeCitation.document_code ?? '未标注文号'}</dd></div>
             <div><dt>所属章节</dt><dd>{activeCitation.path_text ?? '未标注'}</dd></div>
             <div><dt>页码位置</dt><dd>{pageText(activeCitation)}</dd></div>
             <div><dt>来源标识</dt><dd>{activeCitation.source_reference || '未标注'}</dd></div>
           </dl>
           <div className="evidence-buttons">
+            {/* 正文定位与PDF均在新标签页打开，保留当前对话与证据面板状态。 */}
             <Button
               type="primary"
               icon={<UiIcon icon={FileTextOutlined} />}
-              onClick={() => navigate(`/documents/${activeCitation.document_id}?${targetParams(activeCitation).toString()}`)}
+              href={`/documents/${activeCitation.document_id}?${targetParams(activeCitation).toString()}`}
+              target="_blank"
+              rel="noreferrer"
             >
               定位制度正文
             </Button>
@@ -151,29 +152,6 @@ export function EvidencePanel({
             ) : null}
           </div>
         </section>
-
-        <Collapse
-          ghost
-          size="small"
-          className="evidence-technical"
-          items={[{
-            key: 'snapshot',
-            label: '证据快照详情',
-            children: (
-              <dl className="evidence-metadata technical-details">
-                <div><dt>document_id</dt><dd>{activeCitation.document_id}</dd></div>
-                <div><dt>primary_node_id</dt><dd>{activeCitation.primary_node_id ?? '—'}</dd></div>
-                <div><dt>parse_run_id</dt><dd>{activeCitation.parse_run_id}</dd></div>
-                <div><dt>chunk_run_id</dt><dd>{activeCitation.chunk_run_id}</dd></div>
-                <div><dt>index_run_id</dt><dd>{activeCitation.index_run_id}</dd></div>
-                <div><dt>chunk_id</dt><dd>{activeCitation.chunk_id}</dd></div>
-                <div><dt>Citation版本</dt><dd>{activeCitation.citation_version}</dd></div>
-                <div><dt>证据标识版本</dt><dd>{activeCitation.evidence_uid_version}</dd></div>
-                <div><dt>证据快照哈希</dt><dd>{activeCitation.snapshot_hash}</dd></div>
-              </dl>
-            ),
-          }]}
-        />
 
         {related.length > 1 ? (
           <section className="related-evidence">

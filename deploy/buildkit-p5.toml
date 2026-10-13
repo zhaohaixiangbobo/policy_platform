@@ -1,0 +1,12 @@
+# 文件说明：仅用于P5专用构建器，保留缓存，不修改Docker Desktop全局配置。
+# Docker Hub镜像站按顺序尝试：前一个连接失败或返回4xx/5xx（如502）时自动换下一个，最后才回落docker.io。
+# 镜像站只是下载通道：基础镜像仍按p5-images.json的完整SHA256寻址，BuildKit按内容摘要校验，始终使用https。
+# 华为云SWR加速器地址与账号绑定（取自本机Docker Desktop配置），更换账号时替换为自己的地址；
+# 2026-10-12已用scripts/p5-mirror-check.py核验两者均能提供五个锁定摘要及ARM64子清单。
+# 备选：docker.1ms.run 同日核验通过但较慢，需要时追加到列表末尾。
+# 注意：本文件在docker buildx create时嵌入构建器，修改后不会自动生效，须按P5_ARM64_DELIVERY.md重建构建器。
+[registry."docker.io"]
+  mirrors = ["2a6bf1988cb6428c877f723ec7530dbc.mirror.swr.myhuaweicloud.com", "docker.m.daocloud.io"]
+[worker.oci]
+  max-parallelism = 2
+  gc = false

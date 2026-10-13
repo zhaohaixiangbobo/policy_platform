@@ -8,6 +8,7 @@ import { getDocument, getDocumentNodes, listDocuments } from '../api/documents';
 import type { DocumentNode, DocumentSummary } from '../types/documents';
 import '../styles/learning-assessment.css';
 import { UiIcon } from '../components/UiIcon';
+import { MaterialRecommendations } from '../components/MaterialRecommendations';
 import { resolveLearningNavigation, visibleQuestionIndices } from './learningAssessmentView';
 
 const names = { SINGLE: '单选题', MULTIPLE: '多选题', TRUE_FALSE: '判断题' };
@@ -170,10 +171,10 @@ export function LearningAssessmentPage() {
     catch (e) { notifyError(e); } finally { setBusy(false); }
   };
   if (!features) return <Spin />;
-  if (!enabled) return <Empty description="学习成效检测未启用或当前不可用" />;
+  if (!enabled) return <Empty description="学习检测未启用或当前不可用" />;
   return <div className="page-stack learning-page learning-workspace">
     <header className="learning-heading">
-      <div><Typography.Title level={2}>学习成效检测</Typography.Title>
+      <div><Typography.Title level={2}>学习检测</Typography.Title>
         <Typography.Text type="secondary">{view === 'config' ? '选择制度与出题范围，快速生成个人学习自测题目' : '通过答题检验对制度内容的掌握情况，巩固学习效果'}</Typography.Text></div>
       <Segmented aria-label="学习检测页面切换" value={view} onChange={value => setView(value as 'config' | 'answer')}
         options={[{ label: '检测配置', value: 'config', icon: <UiIcon icon={SettingOutlined} /> }, { label: '答题与结果', value: 'answer', icon: <UiIcon icon={BookOutlined} /> }]} />
@@ -283,7 +284,10 @@ export function LearningAssessmentPage() {
             <Typography.Text type="secondary">知识点：{question.knowledge_point}</Typography.Text>
           </div>}
           <footer className="learning-question-footer">
-            {submitted ? <Button icon={<UiIcon icon={FileTextOutlined} />} onClick={() => setEvidenceOpen(value => !value)}>{evidenceOpen ? '收起制度依据' : '查看制度依据'}</Button>
+            {submitted ? <Space wrap><Button icon={<UiIcon icon={FileTextOutlined} />} onClick={() => setEvidenceOpen(value => !value)}>{evidenceOpen ? '收起制度依据' : '查看制度依据'}</Button>
+              <MaterialRecommendations key={`${current.assessment_id}:${question.question_id}`}
+                endpoint={`/api/v1/learning-assessments/${current.assessment_id}/questions/${encodeURIComponent(question.question_id)}/materials`} />
+            </Space>
               : <Typography.Text type="secondary">提交后可查看答案解析与制度依据</Typography.Text>}
             <Space><Button icon={<UiIcon icon={LeftOutlined} />} disabled={position <= 0} onClick={() => chooseQuestion(indices[position - 1])}>上一题</Button>
               <Button type="primary" disabled={position >= indices.length - 1} onClick={() => chooseQuestion(indices[position + 1])}>下一题 <UiIcon icon={RightOutlined} /></Button></Space>

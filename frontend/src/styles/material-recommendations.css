@@ -1,0 +1,119 @@
+/* 文件说明：定义问答页配套资料推荐及案例详情的轻量阅读样式。 */
+
+/* 学习结果页的资料入口与制度依据并列，使用同一类次级按钮层级。 */
+.learning-material-button.ant-btn {
+  color: #1f2f46;
+  background: #fff;
+  border-color: #d7dee9;
+  border-radius: 8px;
+  font-weight: 400;
+  box-shadow: none;
+}
+
+.learning-material-button.ant-btn:hover,
+.learning-material-button.ant-btn:focus-visible {
+  color: #245fe5;
+  background: #fff;
+  border-color: #91b6ff;
+}
+
+.recommendation-detail-drawer .ant-drawer-header {
+  min-height: 70px;
+  padding: 18px 24px;
+  border-bottom-color: var(--chat-panel-border);
+}
+
+.recommendation-detail-drawer .ant-drawer-title {
+  color: #17233b;
+  font-size: 18px;
+  line-height: 1.5;
+}
+
+.recommendation-detail-drawer .ant-drawer-body {
+  padding: 24px;
+  background: #fbfcfe;
+}
+
+.recommendation-detail-meta.ant-typography {
+  margin: 0 0 16px;
+  color: #8390a3;
+}
+
+.recommendation-case-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.recommendation-case-section {
+  padding: 20px 22px;
+  background: #fff;
+  border: 1px solid var(--chat-panel-border);
+  border-radius: 12px;
+}
+
+.recommendation-case-section h3 {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 0 0 16px;
+  color: #17233b;
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+.recommendation-case-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: #346bed;
+  font-size: 20px;
+  background: #e8efff;
+  border-radius: 9px;
+}
+
+.recommendation-case-section.is-orange .recommendation-case-icon {
+  color: #d86434;
+  background: #fff0e8;
+}
+
+.recommendation-case-section.is-green .recommendation-case-icon {
+  color: #237804;
+  background: #f1faee;
+}
+
+.recommendation-case-section p,
+.recommendation-case-original {
+  margin: 0;
+  color: #344054;
+  font-size: 15px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.recommendation-case-original {
+  padding: 16px 18px;
+  background: var(--chat-muted-bg);
+  border-radius: 8px;
+}
+
+/* 透明流程图仅在显示时铺白底，避免透出对话内容；大图预览经 Portal 挂载，用专属根类限定范围。 */
+.recommendation-thumbnail img,
+.recommendation-detail-drawer .ant-image-img,
+.recommendation-image-preview .ant-image-preview-img {
+  background-color: #fff;
+}
+
+@media (max-width: 767px) {
+  .recommendation-detail-drawer .ant-drawer-body {
+    padding: 18px;
+  }
+
+  .recommendation-case-section {
+    padding: 18px;
+  }
+}

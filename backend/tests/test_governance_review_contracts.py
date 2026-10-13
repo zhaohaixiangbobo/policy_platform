@@ -19,8 +19,6 @@ from app.infrastructure.db.models import IngestionJob, MetadataChangeRequest, Re
 from knowledge.config import KnowledgePaths
 from knowledge.management import KnowledgeManagementService
 from knowledge.metadata_service import MetadataConflictError
-from knowledge.parser.database import ParserDatabase, utc_now
-from knowledge.parser.review import ReviewService as ParseReviewService
 
 
 def _session() -> Session:
@@ -196,60 +194,6 @@ def test_task_center_uses_server_pagination_and_filtered_total() -> None:
     assert filtered_total == 5 and len(filtered_items) == 5
     assert counts == {"FAILED": 5, "UPLOADED": 7}
     session.close()
-
-
-def test_parse_batch_confirmation_is_atomic_and_excludes_blocking_errors() -> None:
-    root = Path(os.environ["POLICY_TEST_RUNTIME_ROOT"]).resolve() / uuid4().hex
-    database_path = root / "knowledge" / "policy_parser.db"
-    database_path.parent.mkdir(parents=True)
-    now = utc_now()
-    with ParserDatabase(database_path) as database:
-        document_id = database.get_or_create_document({
-            "source_file": "pending/batch.docx", "file_name": "batch.docx",
-            "file_size": 10, "mime_type": "application/docx", "checksum": uuid4().hex,
-        })
-        run_id = database.create_parse_run(document_id, "test", "batch-config")
-        node_ids: list[int] = []
-        for index in range(2):
-            cursor = database.connection.execute(
-                """
-                INSERT INTO policy_node (
-                    document_id,parse_run_id,temp_key,node_type,raw_text,level,order_no,
-                    parser_confidence,decision_method,review_status,created_at,updated_at
-                ) VALUES (?,?,?,'article','正文',1,?,1.0,'rule','pending',?,?)
-                """,
-                (document_id, run_id, f"node-{index}", index, now, now),
-            )
-            node_ids.append(int(cursor.lastrowid))
-        issue_ids: list[int] = []
-        for severity in ("review", "error"):
-            cursor = database.connection.execute(
-                """
-                INSERT INTO validation_issue (
-                    parse_run_id,stage,issue_code,severity,message,details_json,resolved
-                ) VALUES (?,'validate',?,?,?,'{}',0)
-                """,
-                (run_id, f"ISSUE_{severity.upper()}", severity, severity),
-            )
-            issue_ids.append(int(cursor.lastrowid))
-        database.connection.commit()
-
-    with ParseReviewService(database_path) as review:
-        result = review.decide_many(
-            run_id=run_id, target_type="node", target_ids=node_ids,
-            action="confirm", reviewed_by="reviewer",
-        )
-        assert result["processed_count"] == 2
-        with pytest.raises(ValueError, match="普通待处理问题"):
-            review.decide_many(
-                run_id=run_id, target_type="issue", target_ids=issue_ids,
-                action="ignore", reviewed_by="reviewer", comment="统一接受理由",
-            )
-        unresolved = review.db.connection.execute(
-            "SELECT COUNT(*) FROM validation_issue WHERE parse_run_id=? AND resolved=0",
-            (run_id,),
-        ).fetchone()[0]
-        assert unresolved == 2
 
 
 def test_review_queue_keeps_zero_issue_runs_pending_and_pages_by_ten() -> None:

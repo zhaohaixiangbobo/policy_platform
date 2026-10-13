@@ -1,0 +1,932 @@
+/*
+ * 文件说明：统一门户（工作台、专用登录、模块占位）样式。
+ * 视觉方向：城市河景背景 + 上雾下沉的光感遮罩，标题渐变字，六张"玻璃质感"模块卡片。
+ * 每张卡片的主色由内联 CSS 变量注入：--c 主色、--c-deep 深色端、--c-soft/--c-line/--c-shadow 三档透明度，
+ * --i 为入场错峰序号，--mx/--my 为指针位置（驱动跟随光斑）。
+ * 兼容基线 Chrome 89：不使用 :has、color-mix、容器查询及独立 translate 属性。
+ */
+
+/* ---------- 画布与背景 ---------- */
+.portal-shell {
+    --ink: #0d2552;
+    --ink-2: #4a5f86;
+    --ink-3: #8a9ab8;
+    --ease: cubic-bezier(.2, .8, .2, 1);
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    box-sizing: border-box;
+    padding: clamp(64px, 7vh, 88px) clamp(20px, 4vw, 72px) 24px;
+    overflow: hidden;
+    color: var(--ink);
+    background: #e9f2fd;
+}
+
+/* 背景图单独成层，入场时由略微放大缓慢回落，形成"镜头推近"的呼吸感 */
+.portal-shell::before {
+    content: '';
+    position: absolute;
+    inset: -2%;
+    z-index: -2;
+    background: url('/portal-background.png') center 35% / cover no-repeat;
+    animation: portal-bg 2.4s var(--ease) both;
+}
+
+/* 顶部白雾托住标题，底部渐亮保证卡片区与页脚可读 */
+.portal-shell::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+        radial-gradient(70% 46% at 50% 0%, rgba(255, 255, 255, .9), rgba(255, 255, 255, 0) 72%),
+        linear-gradient(180deg, rgba(240, 246, 255, .3) 0%, rgba(240, 246, 255, 0) 38%, rgba(226, 237, 252, .5) 70%, rgba(234, 242, 253, .94) 100%);
+}
+
+/* ---------- 账户胶囊 ---------- */
+.portal-account {
+    position: absolute;
+    top: 18px;
+    right: clamp(16px, 2.4vw, 36px);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    padding: 5px;
+    border: 1px solid rgba(255, 255, 255, .85);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .62);
+    -webkit-backdrop-filter: blur(12px) saturate(1.3);
+    backdrop-filter: blur(12px) saturate(1.3);
+    box-shadow: 0 6px 20px -8px rgba(20, 60, 130, .25);
+    transition: background-color .3s, box-shadow .4s var(--ease);
+    animation: portal-fade .6s .1s both;
+}
+
+.portal-account:hover,
+.portal-account:focus-within {
+    background: rgba(255, 255, 255, .82);
+    box-shadow: 0 10px 26px -10px rgba(20, 60, 130, .32);
+}
+
+/* 用户信息默认收起；胶囊右侧锚定，展开时自然向左生长 */
+.portal-account-who {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateX(10px);
+    transition: max-width .5s var(--ease), margin .5s var(--ease), opacity .3s, transform .5s var(--ease);
+}
+
+.portal-account:hover .portal-account-who,
+.portal-account:focus-within .portal-account-who {
+    max-width: 220px;
+    margin-right: 10px;
+    opacity: 1;
+    transform: none;
+}
+
+.portal-avatar {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(145deg, #3978ef, #1f4fd6);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35);
+}
+
+.portal-account-name {
+    max-width: 10em;
+    overflow: hidden;
+    font-size: 13px;
+    color: var(--ink);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.portal-account .portal-exit.ant-btn {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    color: var(--ink-2);
+    transition: color .25s, background-color .25s, transform .35s var(--ease);
+}
+
+/* 提高特异性以覆盖 antd text 按钮的悬停色；退出操作用低饱和红作警示 */
+.portal-account .portal-exit.ant-btn:not(:disabled):hover {
+    color: #d4465b;
+    background: rgba(212, 70, 91, .1);
+    transform: rotate(-8deg);
+}
+
+/* ---------- 标题区 ---------- */
+.portal-heading {
+    text-align: center;
+    animation: portal-drop .9s var(--ease) both;
+}
+
+.portal-heading h1 {
+    margin: 0;
+    font-size: clamp(28px, 3.1vw, 54px);
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: .06em;
+    color: #0b3a8f;
+    background: linear-gradient(180deg, #0a3a8c 15%, #1d5fd8 95%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 12px rgba(255, 255, 255, .9));
+}
+
+.portal-slogan {
+    display: inline-flex;
+    align-items: center;
+    gap: clamp(10px, 1.2vw, 18px);
+    margin: clamp(12px, 2vh, 22px) 0 0;
+    /* 抵消末字 letter-spacing 带来的右侧空白，使整行视觉居中 */
+    padding-left: .32em;
+    font-size: clamp(14px, 1.25vw, 20px);
+    font-weight: 600;
+    letter-spacing: .32em;
+    color: #1a4590;
+    text-shadow: 0 1px 10px rgba(255, 255, 255, .95);
+}
+
+.portal-slogan-word {
+    display: inline-flex;
+    align-items: center;
+    gap: clamp(10px, 1.2vw, 18px);
+}
+
+/* 分隔圆点依次取后续模块色，把六色体系提前"预告"在标语里 */
+.portal-slogan-word i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #3978ef;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, .7);
+}
+
+.portal-slogan> :nth-child(3) i {
+    background: #13aaa1;
+}
+
+.portal-slogan> :nth-child(4) i {
+    background: #8170ed;
+}
+
+.portal-slogan> :nth-child(5) i {
+    background: #e7a13d;
+}
+
+.portal-rule {
+    width: clamp(36px, 5vw, 96px);
+    height: 1px;
+    background: linear-gradient(90deg, rgba(42, 100, 214, 0), rgba(42, 100, 214, .7));
+}
+
+.portal-rule.is-end {
+    background: linear-gradient(90deg, rgba(42, 100, 214, .7), rgba(42, 100, 214, 0));
+}
+
+/* ---------- 模块网格 ---------- */
+.portal-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(16px, 1.6vw, 26px);
+    width: 100%;
+    max-width: 1440px;
+    /* 留出天际线，让背景成为构图的一部分而非底纹 */
+    margin: clamp(110px, 22vh, 260px) auto 0;
+}
+
+/* ---------- 模块卡片 ---------- */
+.portal-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: clamp(16px, 1.6vw, 24px);
+    min-height: 172px;
+    padding: 28px 68px 28px 26px;
+    box-sizing: border-box;
+    overflow: hidden;
+    color: var(--ink);
+    text-decoration: none;
+    border: 1px solid rgba(255, 255, 255, .85);
+    border-radius: 22px;
+    background:
+        radial-gradient(120% 90% at 100% 100%, var(--c-soft), rgba(255, 255, 255, 0) 55%),
+        linear-gradient(150deg, rgba(255, 255, 255, .92), rgba(255, 255, 255, .72));
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .95), 0 10px 30px -14px rgba(22, 62, 128, .28);
+    transition: transform .5s var(--ease), border-color .3s, box-shadow .5s var(--ease);
+    /* 仅 backwards 填充：入场结束后释放 transform，避免压住 hover 位移 */
+    animation: portal-rise .8s var(--ease) backwards;
+    animation-delay: calc(var(--i) * 70ms + 200ms);
+}
+
+/* 顶部模块色光带：悬停时由中心向两端展开 */
+.portal-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 24px;
+    right: 24px;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0), var(--c), rgba(255, 255, 255, 0));
+    opacity: 0;
+    transform: scaleX(.3);
+    transition: opacity .4s, transform .6s var(--ease);
+}
+
+/* 指针跟随光斑：位置由 trackSpot 写入的 --mx/--my 决定 */
+.portal-card-spot {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%), var(--c-shadow), rgba(255, 255, 255, 0) 62%);
+    transition: opacity .4s;
+}
+
+/* 右下角大号水印图标，替代参考图中的插画，低对比不干扰阅读 */
+.portal-mark {
+    position: absolute;
+    right: -14px;
+    bottom: -28px;
+    font-size: 132px;
+    line-height: 1;
+    color: var(--c);
+    opacity: .07;
+    pointer-events: none;
+    transform: rotate(-12deg);
+    transition: transform .7s var(--ease), opacity .4s;
+}
+
+/* 图标块：外层浅色光环 + 内层渐变实体，形成两级深度 */
+.portal-icon {
+    position: relative;
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 84px;
+    height: 84px;
+    border-radius: 26px;
+    background: var(--c-soft);
+    transition: transform .6s var(--ease);
+}
+
+.portal-icon-core {
+    display: grid;
+    place-items: center;
+    width: 60px;
+    height: 60px;
+    border-radius: 19px;
+    font-size: 28px;
+    color: #fff;
+    background: linear-gradient(145deg, var(--c), var(--c-deep));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 10px 20px -8px var(--c-line);
+}
+
+.portal-card-body {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.portal-card-title {
+    margin: 0 0 14px;
+    font-size: clamp(18px, 1.35vw, 23px);
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: .02em;
+    color: var(--ink);
+}
+
+.portal-card-body p {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin: 6px 0 0;
+    font-size: clamp(14px, 1vw, 16px);
+    line-height: 1.6;
+    color: var(--ink-2);
+}
+
+.portal-card-body p span {
+    display: inline-flex;
+    align-items: center;
+}
+
+.portal-card-body p i {
+    width: 4px;
+    height: 4px;
+    margin: 0 10px;
+    border-radius: 50%;
+    background: var(--c);
+    opacity: .75;
+}
+
+/* 圆形箭头：悬停时渐变填充，图标"穿出再穿入"一次 */
+.portal-arrow {
+    position: absolute;
+    right: 20px;
+    bottom: 20px;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    overflow: hidden;
+    border-radius: 50%;
+    font-size: 15px;
+    color: var(--c);
+    background: var(--c-soft);
+    transition: color .3s, box-shadow .4s;
+}
+
+.portal-arrow::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(145deg, var(--c), var(--c-deep));
+    opacity: 0;
+    transition: opacity .3s;
+}
+
+.portal-arrow>* {
+    position: relative;
+}
+
+/* ---------- 交互状态 ---------- */
+.portal-card:hover,
+.portal-card:focus-visible {
+    color: var(--ink);
+    border-color: var(--c-line);
+    transform: translateY(-6px);
+    box-shadow: inset 0 1px 0 #fff, 0 26px 50px -18px var(--c-shadow), 0 8px 18px -10px rgba(22, 62, 128, .18);
+}
+
+.portal-card:hover::before,
+.portal-card:focus-visible::before {
+    opacity: 1;
+    transform: none;
+}
+
+.portal-card:hover .portal-card-spot {
+    opacity: .9;
+}
+
+.portal-card:hover .portal-icon,
+.portal-card:focus-visible .portal-icon {
+    transform: rotate(-6deg) scale(1.05);
+}
+
+.portal-card:hover .portal-mark,
+.portal-card:focus-visible .portal-mark {
+    opacity: .12;
+    transform: rotate(-4deg) translate(-10px, -8px);
+}
+
+.portal-card:hover .portal-arrow,
+.portal-card:focus-visible .portal-arrow {
+    color: #fff;
+    box-shadow: 0 8px 18px -6px var(--c-line);
+}
+
+.portal-card:hover .portal-arrow::before,
+.portal-card:focus-visible .portal-arrow::before {
+    opacity: 1;
+}
+
+.portal-card:hover .portal-arrow>*,
+.portal-card:focus-visible .portal-arrow>* {
+    animation: portal-nudge .6s var(--ease);
+}
+
+.portal-card:active {
+    transform: translateY(-3px) scale(.99);
+    transition-duration: .12s;
+}
+
+.portal-card:focus-visible {
+    outline: 3px solid var(--c-line);
+    outline-offset: 3px;
+}
+
+/* ---------- 页脚 ---------- */
+.portal-footer {
+    margin-top: auto;
+    padding-top: 28px;
+    font-size: 12px;
+    letter-spacing: .2em;
+    text-align: center;
+    color: rgba(40, 70, 120, .55);
+    animation: portal-fade .8s .9s both;
+}
+
+/* ---------- 登录与占位页 ---------- */
+.portal-login-card,
+.portal-placeholder {
+    position: relative;
+    width: min(420px, 100%);
+    box-sizing: border-box;
+    margin: clamp(40px, 10vh, 120px) auto 0;
+    padding: 34px 34px 26px;
+    border: 1px solid rgba(255, 255, 255, .85);
+    border-radius: 24px;
+    background: linear-gradient(150deg, rgba(255, 255, 255, .93), rgba(255, 255, 255, .8));
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    backdrop-filter: blur(18px) saturate(1.4);
+    box-shadow: inset 0 1px 0 #fff, 0 30px 60px -24px rgba(20, 60, 130, .35);
+    animation: portal-rise .8s .2s var(--ease) backwards;
+}
+
+.portal-placeholder {
+    width: min(650px, 100%);
+}
+
+/* 登录卡：更通透的玻璃 + 蓝色环境光投影，拉开与背景的前后景距离 */
+.portal-login-card {
+    width: min(440px, 100%);
+    padding: 40px 40px 28px;
+    overflow: hidden;
+    text-align: center;
+    background: linear-gradient(160deg, rgba(255, 255, 255, .9), rgba(255, 255, 255, .72));
+    -webkit-backdrop-filter: blur(22px) saturate(1.5);
+    backdrop-filter: blur(22px) saturate(1.5);
+    box-shadow: inset 0 1px 0 #fff, 0 40px 80px -36px rgba(31, 79, 214, .45), 0 12px 28px -18px rgba(16, 38, 79, .25);
+}
+
+/* 顶部六模块色带，缓慢流动；颜色由 TSX 从模块配置注入 */
+.portal-login-spectrum {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background-size: 200% 100%;
+    animation: portal-flow 8s linear infinite;
+}
+
+.portal-login-badge {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    margin-bottom: 16px;
+    border-radius: 18px;
+    font-size: 26px;
+    color: #fff;
+    background: linear-gradient(145deg, #3978ef, #1f4fd6);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 14px 26px -12px #1f4fd6;
+    animation: portal-pop .7s .45s var(--ease) backwards;
+}
+
+/* 徽标外圈缓慢呼吸的光环 */
+.portal-login-badge::after {
+    content: '';
+    position: absolute;
+    inset: -7px;
+    border: 1px solid rgba(57, 120, 239, .28);
+    border-radius: 24px;
+    animation: portal-halo 3.2s 1.2s var(--ease) infinite;
+}
+
+.portal-login-card h2 {
+    margin: 0 0 6px;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    color: var(--ink);
+}
+
+.portal-login-card>p,
+.portal-login-card>small {
+    display: block;
+    font-size: 13px;
+    color: #7888a0;
+}
+
+.portal-login-card>p {
+    margin: 0 0 28px;
+    letter-spacing: .06em;
+}
+
+.portal-login-card>small {
+    margin-top: 18px;
+    font-size: 12px;
+    letter-spacing: .08em;
+    color: #98a5bb;
+}
+
+.portal-login-form {
+    text-align: left;
+}
+
+.portal-login-form .ant-form-item {
+    margin-bottom: 18px;
+}
+
+/* 输入框：默认无边浅底，聚焦时转白底 + 蓝边 + 外发光；提高特异性以覆盖 antd outlined 变体 */
+.portal-login-card .portal-login-form .ant-input-affix-wrapper {
+    height: 50px;
+    padding: 0 16px;
+    border-color: transparent;
+    border-radius: 14px;
+    background: rgba(238, 243, 251, .9);
+    transition: background-color .25s, border-color .25s, box-shadow .3s var(--ease);
+}
+
+.portal-login-card .portal-login-form .ant-input-affix-wrapper:hover {
+    border-color: #cfdcf2;
+    background: rgba(244, 247, 253, .95);
+}
+
+.portal-login-card .portal-login-form .ant-input-affix-wrapper-focused,
+.portal-login-card .portal-login-form .ant-input-affix-wrapper:focus-within {
+    border-color: #3978ef;
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(57, 120, 239, .12);
+}
+
+.portal-login-card .portal-login-form .ant-input-affix-wrapper.ant-input-status-error {
+    border-color: #f0a3ad;
+    background: #fff7f8;
+}
+
+.portal-login-form .ant-input-prefix {
+    margin-right: 10px;
+    font-size: 16px;
+    color: #8a9ab8;
+    transition: color .25s, transform .35s var(--ease);
+}
+
+.portal-login-form .ant-input-affix-wrapper-focused .ant-input-prefix,
+.portal-login-form .ant-input-affix-wrapper:focus-within .ant-input-prefix {
+    color: #3978ef;
+    transform: scale(1.08);
+}
+
+.portal-login-form .ant-input {
+    font-size: 15px;
+    letter-spacing: .02em;
+}
+
+/* Chrome 自动填充会给内层 input 刷上浅蓝底，用超长过渡延迟保持与外框一致 */
+.portal-login-form input:-webkit-autofill,
+.portal-login-form input:-webkit-autofill:hover,
+.portal-login-form input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #10264f;
+    caret-color: #10264f;
+    transition: background-color 600000s 0s, color 600000s 0s;
+}
+
+.portal-caps {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 12px;
+    color: #c27a12;
+    animation: portal-fade .25s both;
+}
+
+/* 登录按钮：渐变底 + 悬停扫光 + 箭头前推 */
+.portal-login-card .portal-login-submit.ant-btn.ant-btn-primary:not(:disabled) {
+    position: relative;
+    height: 50px;
+    margin-top: 6px;
+    overflow: hidden;
+    border: 0;
+    border-radius: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: .24em;
+    background-image: linear-gradient(135deg, #4a86f5, #1f4fd6);
+    box-shadow: 0 14px 28px -14px #1f4fd6;
+    transition: transform .3s var(--ease), box-shadow .3s var(--ease), filter .25s;
+}
+
+.portal-login-card .portal-login-submit.ant-btn.ant-btn-primary:not(:disabled):hover {
+    filter: brightness(1.05);
+    transform: translateY(-2px);
+    box-shadow: 0 20px 34px -14px #1f4fd6;
+}
+
+.portal-login-card .portal-login-submit.ant-btn.ant-btn-primary:not(:disabled):active {
+    transform: translateY(0) scale(.985);
+    transition-duration: .1s;
+}
+
+.portal-login-shine {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -40%;
+    width: 30%;
+    background: linear-gradient(100deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .45), rgba(255, 255, 255, 0));
+    transform: skewX(-20deg);
+    pointer-events: none;
+}
+
+.portal-login-submit:hover .portal-login-shine {
+    animation: portal-shine .9s var(--ease);
+}
+
+.portal-login-go {
+    display: inline-flex;
+    margin-left: 4px;
+    font-size: 14px;
+    transition: transform .35s var(--ease);
+}
+
+.portal-login-submit:hover .portal-login-go {
+    transform: translateX(4px);
+}
+
+/* 保留入场动画名在列表首位，追加摇动；移除类名时入场动画不会重播 */
+.portal-login-card.is-shake {
+    animation: portal-rise .8s .2s var(--ease) backwards, portal-shake .45s var(--ease);
+}
+
+/* ---------- 动画 ---------- */
+@keyframes portal-bg {
+    from {
+        opacity: 0;
+        transform: scale(1.06);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes portal-drop {
+    from {
+        opacity: 0;
+        transform: translateY(-14px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes portal-rise {
+    from {
+        opacity: 0;
+        transform: translateY(28px) scale(.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes portal-fade {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes portal-flow {
+    from {
+        background-position: 0 0;
+    }
+
+    to {
+        background-position: 200% 0;
+    }
+}
+
+@keyframes portal-pop {
+    from {
+        opacity: 0;
+        transform: scale(.6) rotate(-12deg);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes portal-halo {
+    0% {
+        opacity: .9;
+        transform: scale(.92);
+    }
+
+    70%,
+    100% {
+        opacity: 0;
+        transform: scale(1.18);
+    }
+}
+
+@keyframes portal-shine {
+    from {
+        left: -40%;
+    }
+
+    to {
+        left: 120%;
+    }
+}
+
+@keyframes portal-shake {
+
+    0%,
+    100% {
+        transform: none;
+    }
+
+    20%,
+    60% {
+        transform: translateX(-8px);
+    }
+
+    40%,
+    80% {
+        transform: translateX(8px);
+    }
+}
+
+@keyframes portal-nudge {
+    0% {
+        transform: none;
+    }
+
+    45% {
+        opacity: 0;
+        transform: translateX(160%);
+    }
+
+    46% {
+        opacity: 0;
+        transform: translateX(-160%);
+    }
+
+    100% {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* ---------- 响应式 ---------- */
+/* 宽屏矮屏（如 1366×768 笔记本）：压缩纵向尺寸，保证六卡一屏可见 */
+@media (max-height: 800px) and (min-width: 1000px) {
+    .portal-shell {
+        padding-top: 56px;
+    }
+
+    .portal-grid {
+        margin-top: clamp(70px, 16vh, 160px);
+    }
+
+    .portal-card {
+        min-height: 146px;
+        padding: 20px 60px 20px 20px;
+    }
+
+    .portal-icon {
+        width: 70px;
+        height: 70px;
+        border-radius: 22px;
+    }
+
+    .portal-icon-core {
+        width: 50px;
+        height: 50px;
+        border-radius: 16px;
+        font-size: 23px;
+    }
+
+    .portal-card-title {
+        margin-bottom: 10px;
+    }
+
+    .portal-login-card {
+        margin-top: 32px;
+        padding: 30px 36px 22px;
+    }
+
+    .portal-login-badge {
+        width: 48px;
+        height: 48px;
+        margin-bottom: 12px;
+        font-size: 22px;
+    }
+
+    .portal-login-card>p {
+        margin-bottom: 20px;
+    }
+
+    .portal-arrow {
+        right: 16px;
+        bottom: 16px;
+        width: 34px;
+        height: 34px;
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 1100px) {
+    .portal-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: clamp(70px, 14vh, 160px);
+    }
+}
+
+@media (max-width: 640px) {
+    .portal-shell {
+        padding-top: 76px;
+    }
+
+    .portal-account {
+        top: 14px;
+    }
+
+    .portal-slogan {
+        gap: 8px;
+        letter-spacing: .12em;
+    }
+
+    .portal-slogan-word {
+        gap: 8px;
+    }
+
+    .portal-rule {
+        display: none;
+    }
+
+    .portal-grid {
+        grid-template-columns: 1fr;
+        margin-top: 40px;
+    }
+
+    .portal-card {
+        min-height: 0;
+        padding: 20px 60px 20px 18px;
+    }
+
+    .portal-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 20px;
+    }
+
+    .portal-icon-core {
+        width: 46px;
+        height: 46px;
+        border-radius: 15px;
+        font-size: 21px;
+    }
+
+    .portal-login-card {
+        margin-top: 40px;
+        padding: 32px 22px 22px;
+    }
+}
+
+/* 尊重系统"减少动态效果"设置：保留状态色变化，去掉位移与入场动画 */
+@media (prefers-reduced-motion: reduce) {
+
+    .portal-shell::before,
+    .portal-shell *,
+    .portal-shell *::before,
+    .portal-shell *::after {
+        animation: none !important;
+        transition-duration: .01ms !important;
+    }
+
+    .portal-card:hover,
+    .portal-card:focus-visible,
+    .portal-card:active,
+    .portal-card:hover .portal-icon,
+    .portal-card:hover .portal-mark {
+        transform: none;
+    }
+}

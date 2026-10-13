@@ -27,11 +27,12 @@ from app.infrastructure.db.models import (
 
 
 ROLE_PERMISSIONS = {
-    "USER": ["chat.read", "chat.write", "knowledge.document.read"],
+    "USER": ["chat.read", "chat.write", "knowledge.document.read", "material.read"],
     "REVIEWER": [
         "chat.read", "chat.write", "knowledge.document.read", "admin.access",
         "knowledge.parse.review", "knowledge.chunk.review", "policy_relation.review",
         "policy_process.review", "knowledge.metadata.review",
+        "material.read",
     ],
     "ADMIN": [
         "chat.read", "chat.write", "knowledge.document.read", "admin.access",
@@ -40,6 +41,7 @@ ROLE_PERMISSIONS = {
         "knowledge.parse.correct", "knowledge.batch.manage", "knowledge.index.publish",
         "policy_relation.manage", "policy_relation.review", "policy_process.manage", "policy_process.review",
         "policy_process.publish", "system.user.manage", "system.audit.read",
+        "material.read", "material.manage",
     ],
 }
 
@@ -132,7 +134,9 @@ class AuthService:
         self._hasher = PasswordHasher()
 
     def login(self, username: str, password: str, ip_address: str | None, user_agent: str | None) -> LoginResult:
-        provider = ensure_auth_baseline(self._session)
+        provider = self._session.scalar(select(AuthProvider).where(AuthProvider.provider_key == "LOCAL"))
+        if provider is None:
+            raise AuthenticationError("认证配置未初始化，请联系管理员")
         user = self._session.scalar(select(UserAccount).where(UserAccount.username == username.strip()))
         credential = self._session.get(LocalCredential, user.id) if user else None
         if user is None or credential is None or user.status != "ACTIVE":

@@ -9,6 +9,7 @@ from app.api.v1.health import router as health_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.admin import router as admin_router
 from app.api.v1.learning import router as learning_router
+from app.api.v1.materials import router as materials_router
 from app.config import get_settings
 from fastapi import Depends
 from app.api.dependencies import get_current_principal
@@ -21,6 +22,7 @@ api_router.include_router(documents_router)
 api_router.include_router(chat_router)
 api_router.include_router(diagnostics_router)
 api_router.include_router(learning_router)
+api_router.include_router(materials_router)
 
 
 @api_router.get("/features", tags=["features"])

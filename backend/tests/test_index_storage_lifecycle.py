@@ -32,6 +32,10 @@ class IndexStorageLifecycleTests(unittest.TestCase):
             CREATE TABLE index_storage_retirement(index_run_id INTEGER, state TEXT);
             INSERT INTO index_run VALUES(1,'old','succeeded','superseded'),(8,'keep','succeeded','superseded'),(9,'current','succeeded','active');
             INSERT INTO index_profile VALUES(9,9);
+            ALTER TABLE index_profile ADD COLUMN id INTEGER DEFAULT 1;
+            ALTER TABLE index_profile ADD COLUMN profile_name TEXT DEFAULT 'policy_platform_dense';
+            ALTER TABLE index_profile ADD COLUMN alias_name TEXT DEFAULT 'policy_platform_dense_active';
+            ALTER TABLE index_run ADD COLUMN profile_id INTEGER DEFAULT 1;
         """)
         self.store = Mock()
         self.store.alias_targets.return_value = {"current"}
@@ -127,6 +131,23 @@ class IndexStorageLifecycleTests(unittest.TestCase):
             manager.__exit__ = Mock(side_effect=lambda *args: self.db.rollback())
             with patch("knowledge.indexing.maintenance.IndexDatabase", return_value=manager):
                 with self.assertRaisesRegex(ValueError, "未完成"):
+                    retire_collections(Path("unused"), platform, self.store, [1], [8,9], execute=True)
+                self.store.delete_collection.assert_not_called()
+
+    def test_foreign_namespace_blocks_cleanup(self):
+        """新环境即使收到旧运行ID，也应在删除向量前拒绝。"""
+        with isolated_directory() as directory:
+            platform = Path(directory) / "platform.db"
+            with closing(sqlite3.connect(platform)) as connection:
+                connection.execute("CREATE TABLE index_publication_request(id TEXT, status TEXT)")
+                connection.commit()
+            self.db.commit()
+            manager = Mock()
+            manager.__enter__ = Mock(return_value=SimpleNamespace(connection=self.db))
+            manager.__exit__ = Mock(side_effect=lambda *args: self.db.rollback())
+            config = SimpleNamespace(profile_name="pg_test", alias_name="pg_test_active")
+            with patch("knowledge.indexing.maintenance.IndexDatabase", return_value=manager), patch("knowledge.indexing.maintenance.IndexConfig.from_environment", return_value=config):
+                with self.assertRaisesRegex(ValueError, "命名空间"):
                     retire_collections(Path("unused"), platform, self.store, [1], [8,9], execute=True)
                 self.store.delete_collection.assert_not_called()
 

@@ -1,0 +1,22 @@
+# 文件说明：显式启用授权字体挂载；启动前设置POLICY_FONT_DIR，字体不进入镜像。
+x-fonts: &fonts
+  entrypoint: [sh, /opt/policy-fonts/entrypoint.sh]
+  volumes:
+    - type: bind
+      source: ${POLICY_FONT_DIR:?请设置授权字体宿主目录POLICY_FONT_DIR}
+      target: /usr/local/share/fonts/policy
+      read_only: true
+      bind: {create_host_path: false}
+    - {type: bind, source: ./deploy/fonts/99-policy-fonts.conf, target: /etc/fonts/conf.d/99-policy-fonts.conf, read_only: true, bind: {create_host_path: false}}
+    - {type: bind, source: ./deploy/fonts/entrypoint.sh, target: /opt/policy-fonts/entrypoint.sh, read_only: true, bind: {create_host_path: false}}
+services:
+  api:
+    <<: *fonts
+    # 覆盖 entrypoint 后 Compose 不继承镜像 CMD，显式保留 API 启动命令。
+    command: [python, -m, uvicorn, app.main:app, --host, 0.0.0.0, --port, '8020', --no-proxy-headers]
+  ingestion-worker:
+    <<: *fonts
+  learning-worker:
+    <<: *fonts
+  initialize:
+    <<: *fonts

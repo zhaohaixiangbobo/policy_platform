@@ -12,3 +12,28 @@ node_modules
 frontend/dist
 .venv
 docs/ui-reference
+# P4：构建上下文仅携带源码，测试输出、备份和独立存储目录不得随镜像交付。
+outputs
+backups
+secrets
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/*.sqlite
+**/*.sqlite3
+**/*.log
+**/*.env
+**/.env
+**/.env.*
+!**/*.env.example
+!**/.env.example
+qdrant_storage
+postgres_data
+.codex-artifact
+# 授权字体通过只读挂载提供，不进入构建上下文。
+**/*.ttf
+**/*.TTF
+**/*.ttc
+**/*.TTC
+**/*.otf
+**/*.OTF

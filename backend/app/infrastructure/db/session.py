@@ -3,7 +3,7 @@
 from collections.abc import Iterator
 from functools import lru_cache
 
-from sqlalchemy import Engine, create_engine, event, text
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import get_settings
@@ -14,27 +14,11 @@ def get_engine() -> Engine:
     """按配置创建Platform业务库引擎，不连接知识引擎控制库。"""
 
     settings = get_settings()
-    connect_args = (
-        {"check_same_thread": False}
-        if settings.database_url.startswith("sqlite")
-        else {}
-    )
-    engine = create_engine(
-        settings.database_url,
-        pool_pre_ping=True,
-        connect_args=connect_args,
-    )
-    if settings.database_url.startswith("sqlite"):
-        def configure_sqlite(dbapi_connection, _connection_record) -> None:
-            """为本机单Worker阶段建立稳定的SQLite并发和完整性基础。"""
-
-            cursor = dbapi_connection.cursor()
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA busy_timeout=5000")
-            cursor.close()
-
-        event.listen(engine, "connect", configure_sqlite)
+    engine = create_engine(settings.database_url, hide_parameters=True, pool_pre_ping=True,
+                         pool_size=5, max_overflow=2, pool_timeout=10, pool_recycle=1800,
+                         connect_args={"connect_timeout": 5, "options": "-c timezone=UTC -c statement_timeout=60000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=60000"})
+    from knowledge.storage.pool_metrics import register_pool
+    register_pool(engine, "platform")
     return engine
 
 

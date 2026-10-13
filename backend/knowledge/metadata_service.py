@@ -6,6 +6,10 @@
 
 from __future__ import annotations
 
+from sqlalchemy import text as sql_text, select, update, insert, bindparam
+from knowledge.storage.schema import metadata as knowledge_metadata
+
+
 import hashlib
 import json
 from datetime import date
@@ -31,8 +35,8 @@ class MetadataConflictError(RuntimeError):
 class KnowledgeMetadataService:
     """制度系列及元数据修订仓储服务。"""
 
-    def __init__(self, database_path: Path) -> None:
-        self.db = ParserDatabase(database_path)
+    def __init__(self, database_url: str) -> None:
+        self.db = ParserDatabase(database_url)
 
     def close(self) -> None:
         self.db.close()
@@ -44,8 +48,7 @@ class KnowledgeMetadataService:
         self.close()
 
     def list_documents(self) -> list[dict[str, Any]]:
-        rows = self.db.connection.execute(
-            """
+        rows = self.db.repository.run(sql_text("""
             SELECT d.id, d.file_name, d.series_id, d.document_version_no,
                    d.active_parse_run_id, d.active_chunk_run_id,
                    s.series_key, s.canonical_title,
@@ -59,19 +62,16 @@ class KnowledgeMetadataService:
             JOIN policy_series s ON s.id=d.series_id
             LEFT JOIN document_metadata_revision latest ON latest.id=d.latest_metadata_revision_id
             ORDER BY d.updated_at DESC, d.id DESC
-            """
-        ).fetchall()
+            """)).mappings().fetchall()
         return [dict(row) for row in rows]
 
     def list_series(self) -> list[dict[str, Any]]:
-        rows = self.db.connection.execute(
-            """
+        rows = self.db.repository.run(sql_text("""
             SELECT s.*, COUNT(d.id) AS document_count
             FROM policy_series s
             LEFT JOIN policy_document d ON d.series_id=s.id
             GROUP BY s.id ORDER BY s.updated_at DESC, s.id DESC
-            """
-        ).fetchall()
+            """)).mappings().fetchall()
         return [dict(row) for row in rows]
 
     def assign_series(
@@ -90,63 +90,42 @@ class KnowledgeMetadataService:
                 title = str(canonical_title or document.get("title") or document.get("file_name") or "").strip()
                 if not title:
                     raise ValueError("新制度系列名称不能为空")
-                cursor = self.db.connection.execute(
-                    """
+                cursor = self.db.repository.run(sql_text("""
                     INSERT INTO policy_series (series_key, canonical_title, status, created_at, updated_at)
-                    VALUES (?, ?, 'ACTIVE', ?, ?)
-                    """,
-                    (f"policy-series-{document_id}-{now}", title, now, now),
-                )
-                target_series_id = int(cursor.lastrowid)
+                    VALUES (:p0, :p1, 'ACTIVE', :p2, :p3) RETURNING id"""), {'p0': f"policy-series-{document_id}-{now}", 'p1': title, 'p2': now, 'p3': now})
+                target_series_id = int(cursor.scalar_one())
             else:
-                target = self.db.connection.execute(
-                    "SELECT * FROM policy_series WHERE id=?", (series_id,)
-                ).fetchone()
+                target = self.db.repository.run(sql_text('SELECT * FROM policy_series WHERE id=:p0'), {'p0': series_id}).mappings().fetchone()
                 if target is None:
                     raise LookupError("制度系列不存在")
                 target_series_id = int(series_id)
                 if canonical_title and canonical_title.strip() != str(target["canonical_title"]):
-                    self.db.connection.execute(
-                        "UPDATE policy_series SET canonical_title=?, updated_at=? WHERE id=?",
-                        (canonical_title.strip(), now, target_series_id),
-                    )
-            version_no = int(self.db.connection.execute(
-                """
+                    self.db.repository.run(sql_text('UPDATE policy_series SET canonical_title=:p0, updated_at=:p1 WHERE id=:p2'), {'p0': canonical_title.strip(), 'p1': now, 'p2': target_series_id})
+            version_no = int(self.db.repository.run(sql_text("""
                 SELECT COALESCE(MAX(document_version_no), 0) + 1
-                FROM policy_document WHERE series_id=? AND id!=?
-                """,
-                (target_series_id, document_id),
-            ).fetchone()[0])
-            self.db.connection.execute(
-                """
+                FROM policy_document WHERE series_id=:p0 AND id!=:p1
+                """), {'p0': target_series_id, 'p1': document_id}).scalar_one())
+            self.db.repository.run(sql_text("""
                 UPDATE policy_document
-                SET series_id=?, document_version_no=?, updated_at=? WHERE id=?
-                """,
-                (target_series_id, version_no, now, document_id),
-            )
+                SET series_id=:p0, document_version_no=:p1, updated_at=:p2 WHERE id=:p3
+                """), {'p0': target_series_id, 'p1': version_no, 'p2': now, 'p3': document_id})
         return self._document(document_id)
 
     def detail(self, document_id: int) -> dict[str, Any]:
         document = self._document(document_id)
-        revisions = self.db.connection.execute(
-            """
+        revisions = self.db.repository.run(sql_text("""
             SELECT * FROM document_metadata_revision
-            WHERE document_id=? ORDER BY revision_no DESC
-            """,
-            (document_id,),
-        ).fetchall()
-        candidates = self.db.connection.execute(
-            """
+            WHERE document_id=:p0 ORDER BY revision_no DESC
+            """), {'p0': document_id}).mappings().fetchall()
+        candidates = self.db.repository.run(sql_text("""
             SELECT ef.*, sb.page_start, sb.page_end
             FROM extracted_field ef
             LEFT JOIN source_block sb ON sb.id=ef.source_block_id
             WHERE ef.parse_run_id=(
-                SELECT latest_parse_run_id FROM policy_document WHERE id=?
+                SELECT latest_parse_run_id FROM policy_document WHERE id=:p0
             )
             ORDER BY ef.field_name, ef.confidence DESC, ef.id
-            """,
-            (document_id,),
-        ).fetchall()
+            """), {'p0': document_id}).mappings().fetchall()
         return {
             "document": document,
             "revisions": [dict(row) for row in revisions],
@@ -196,22 +175,11 @@ class KnowledgeMetadataService:
                     values["status"] = initial_document_status
                     now = utc_now()
                     with self.db.transaction():
-                        self.db.connection.execute(
-                            """
+                        self.db.repository.run(sql_text("""
                             UPDATE document_metadata_revision
-                            SET parse_run_id=?,status=?,source_type=?,change_reason=?,content_hash=?,updated_at=?
-                            WHERE id=?
-                            """,
-                            (
-                                int(active_parse_run_id),
-                                initial_document_status,
-                                source_type,
-                                change_reason,
-                                self._content_hash(values),
-                                now,
-                                int(latest_id),
-                            ),
-                        )
+                            SET parse_run_id=:p0,status=:p1,source_type=:p2,change_reason=:p3,content_hash=:p4,updated_at=:p5
+                            WHERE id=:p6
+                            """), {'p0': int(active_parse_run_id), 'p1': initial_document_status, 'p2': source_type, 'p3': change_reason, 'p4': self._content_hash(values), 'p5': now, 'p6': int(latest_id)})
                     return self._revision(int(latest_id))
                 same_initial = (
                     initial_document_status is not None
@@ -255,36 +223,26 @@ class KnowledgeMetadataService:
             # 生命周期动作在创建草稿时即写入确定状态，不继承原制度的effective。
             values["status"] = required_status
         repeal_date = date.today().isoformat() if source_type == "REPEAL" else None
-        next_no = int(self.db.connection.execute(
-            "SELECT COALESCE(MAX(revision_no), 0) + 1 FROM document_metadata_revision WHERE document_id=?",
-            (document_id,),
-        ).fetchone()[0])
+        next_no = int(self.db.repository.run(sql_text('SELECT COALESCE(MAX(revision_no), 0) + 1 FROM document_metadata_revision WHERE document_id=:p0'), {'p0': document_id}).scalar_one())
         now = utc_now()
         parse_run_id = int(active_parse_run_id)
         content_hash = self._content_hash(values)
         with self.db.transaction():
-            cursor = self.db.connection.execute(
-                """
+            cursor = self.db.repository.run(sql_text("""
                 INSERT INTO document_metadata_revision (
                     document_id, parse_run_id, revision_no, parent_revision_id, source_type,
                     title, document_code, document_type, issuing_org, addressee_text,
                     authority_level, publish_date, effective_date, expiry_date, status,
                     version, owner_department, confidentiality_level, lifecycle_status,
                     change_reason, repeal_date, content_hash, created_by, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          'DRAFT', ?, ?, ?, ?, ?, ?)
-                """,
-                (
+                ) VALUES (:p0, :p1, :p2, :p3, :p4, :p5, :p6, :p7, :p8, :p9, :p10, :p11, :p12, :p13, :p14, :p15, :p16, :p17,
+                          'DRAFT', :p18, :p19, :p20, :p21, :p22, :p23) RETURNING id"""), dict(zip(('p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10', 'p11', 'p12', 'p13', 'p14', 'p15', 'p16', 'p17', 'p18', 'p19', 'p20', 'p21', 'p22', 'p23'), (
                     document_id, parse_run_id, next_no, parent_revision_id, source_type,
                     *(values[field] for field in METADATA_FIELDS),
                     change_reason, repeal_date, content_hash, actor_user_id, now, now,
-                ),
-            )
-            revision_id = int(cursor.lastrowid)
-            self.db.connection.execute(
-                "UPDATE policy_document SET latest_metadata_revision_id=?, updated_at=? WHERE id=?",
-                (revision_id, now, document_id),
-            )
+                ), strict=True)))
+            revision_id = int(cursor.scalar_one())
+            self.db.repository.run(sql_text('UPDATE policy_document SET latest_metadata_revision_id=:p0, updated_at=:p1 WHERE id=:p2'), {'p0': revision_id, 'p1': now, 'p2': document_id})
         return self._revision(revision_id)
 
     def update_draft(self, document_id: int, revision_id: int, values: dict[str, Any]) -> dict[str, Any]:
@@ -311,14 +269,10 @@ class KnowledgeMetadataService:
             if str(merged.get("status") or "unknown").lower() != parent_status:
                 raise MetadataConflictError("制度效力状态必须通过登记废止或登记失效流程变更")
         metadata = {field: merged.get(field) for field in METADATA_FIELDS}
-        assignments = [f"{field}=?" for field in values]
         now = utc_now()
-        assignments.extend(["content_hash=?", "updated_at=?"])
         with self.db.transaction():
-            self.db.connection.execute(
-                f"UPDATE document_metadata_revision SET {', '.join(assignments)} WHERE id=?",
-                (*values.values(), self._content_hash(metadata), now, revision_id),
-            )
+            table = knowledge_metadata.tables["document_metadata_revision"]
+            self.db.repository.run(update(table).where(table.c.id == revision_id).values(**values, content_hash=self._content_hash(metadata), updated_at=now))
         return self._revision(revision_id)
 
     def submit(self, document_id: int, revision_id: int) -> dict[str, Any]:
@@ -357,23 +311,17 @@ class KnowledgeMetadataService:
         if approved:
             self._validate_lifecycle_revision(revision, require_details=True)
         with self.db.transaction():
-            self.db.connection.execute(
-                """
+            self.db.repository.run(sql_text("""
                 UPDATE document_metadata_revision
-                SET lifecycle_status=?, reviewed_by=?, reviewed_at=?,
-                    change_reason=COALESCE(?, change_reason), updated_at=?
-                WHERE id=?
-                """,
-                (target, reviewer_user_id, now, comment, now, revision_id),
-            )
+                SET lifecycle_status=:p0, reviewed_by=:p1, reviewed_at=:p2,
+                    change_reason=COALESCE(:p3, change_reason), updated_at=:p4
+                WHERE id=:p5
+                """), {'p0': target, 'p1': reviewer_user_id, 'p2': now, 'p3': comment, 'p4': now, 'p5': revision_id})
             if approved:
-                self.db.connection.execute(
-                    """
+                self.db.repository.run(sql_text("""
                     UPDATE policy_document
-                    SET approved_metadata_revision_id=?, updated_at=? WHERE id=?
-                    """,
-                    (revision_id, now, document_id),
-                )
+                    SET approved_metadata_revision_id=:p0, updated_at=:p1 WHERE id=:p2
+                    """), {'p0': revision_id, 'p1': now, 'p2': document_id})
         return self._revision(revision_id)
 
     def withdraw(self, document_id: int, revision_id: int) -> dict[str, Any]:
@@ -393,22 +341,16 @@ class KnowledgeMetadataService:
         fallback_approved_id = document.get("active_metadata_revision_id")
         now = utc_now()
         with self.db.transaction():
-            self.db.connection.execute(
-                """
+            self.db.repository.run(sql_text("""
                 UPDATE document_metadata_revision
-                SET lifecycle_status='WITHDRAWN', updated_at=?
-                WHERE id=?
-                """,
-                (now, revision_id),
-            )
+                SET lifecycle_status='WITHDRAWN', updated_at=:p0
+                WHERE id=:p1
+                """), {'p0': now, 'p1': revision_id})
             if approved_id is not None and int(approved_id) == revision_id:
-                self.db.connection.execute(
-                    """
+                self.db.repository.run(sql_text("""
                     UPDATE policy_document
-                    SET approved_metadata_revision_id=?, updated_at=? WHERE id=?
-                    """,
-                    (fallback_approved_id, now, document_id),
-                )
+                    SET approved_metadata_revision_id=:p0, updated_at=:p1 WHERE id=:p2
+                    """), {'p0': fallback_approved_id, 'p1': now, 'p2': document_id})
         return self._revision(revision_id)
 
     @staticmethod
@@ -465,30 +407,22 @@ class KnowledgeMetadataService:
     def _set_lifecycle(self, revision_id: int, lifecycle_status: str) -> dict[str, Any]:
         now = utc_now()
         with self.db.transaction():
-            self.db.connection.execute(
-                "UPDATE document_metadata_revision SET lifecycle_status=?, updated_at=? WHERE id=?",
-                (lifecycle_status, now, revision_id),
-            )
+            self.db.repository.run(sql_text('UPDATE document_metadata_revision SET lifecycle_status=:p0, updated_at=:p1 WHERE id=:p2'), {'p0': lifecycle_status, 'p1': now, 'p2': revision_id})
         return self._revision(revision_id)
 
     def _document(self, document_id: int) -> dict[str, Any]:
-        row = self.db.connection.execute(
-            """
+        row = self.db.repository.run(sql_text("""
             SELECT d.*, s.series_key, s.canonical_title
             FROM policy_document d
             LEFT JOIN policy_series s ON s.id=d.series_id
-            WHERE d.id=?
-            """,
-            (document_id,),
-        ).fetchone()
+            WHERE d.id=:p0
+            """), {'p0': document_id}).mappings().fetchone()
         if row is None:
             raise LookupError("制度文件不存在")
         return dict(row)
 
     def _revision(self, revision_id: int) -> dict[str, Any]:
-        row = self.db.connection.execute(
-            "SELECT * FROM document_metadata_revision WHERE id=?", (revision_id,)
-        ).fetchone()
+        row = self.db.repository.run(sql_text('SELECT * FROM document_metadata_revision WHERE id=:p0'), {'p0': revision_id}).mappings().fetchone()
         if row is None:
             raise LookupError("元数据修订不存在")
         return dict(row)

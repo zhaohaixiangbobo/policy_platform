@@ -19,7 +19,6 @@ import {
   MoreOutlined,
   PlusOutlined,
   SearchOutlined,
-  SettingOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 import { Actions, Bubble, Conversations, Prompts, Sender } from '@ant-design/x';
@@ -59,6 +58,8 @@ import {
 } from '../api/chat';
 import { getDocument, listDocuments } from '../api/documents';
 import { EvidencePanel } from '../components/EvidencePanel';
+import { PortalAccount } from '../portal/PortalAccount';
+import { MaterialRecommendations } from '../components/MaterialRecommendations';
 import { UiIcon } from '../components/UiIcon';
 import { commonPolicyQuestions } from '../data/commonPolicyQuestions';
 import type {
@@ -175,6 +176,8 @@ function AnswerBody({
   onCitation: (citation: CitationSnapshot) => void;
   onFeedback: (rating: 'up' | 'down') => void;
 }) {
+  const [citationsExpanded, setCitationsExpanded] = useState(false);
+  useEffect(() => setCitationsExpanded(false), [item.id]);
   const citationByLabel = useMemo(
     () => new Map(item.citations.map((citation) => [normalizeCitationLabel(citation.label), citation])),
     [item.citations],
@@ -257,9 +260,9 @@ function AnswerBody({
 
       {item.citations.length > 0 ? (
         <section className="answer-citations" aria-label="引用依据">
-          <Typography.Text type="secondary" className="citation-heading">引用依据</Typography.Text>
+          <Typography.Text type="secondary" className="citation-heading">制度依据（{item.citations.length}）</Typography.Text>
           <div className="citation-chip-list">
-            {item.citations.map((citation) => (
+            {(citationsExpanded ? item.citations : item.citations.slice(0, 3)).map((citation) => (
               <button
                 key={citation.evidence_uid}
                 type="button"
@@ -272,6 +275,10 @@ function AnswerBody({
               </button>
             ))}
           </div>
+          {item.citations.length > 3 && <Button type="link" size="small"
+            aria-expanded={citationsExpanded} onClick={() => setCitationsExpanded((value) => !value)}>
+            {citationsExpanded ? '收起' : `展开全部${item.citations.length}条`}
+          </Button>}
         </section>
       ) : null}
 
@@ -777,7 +784,7 @@ export function ChatPage() {
       <div className="chat-brand">
         <span className="chat-brand-mark"><UiIcon icon={FileProtectOutlined} /></span>
         <span className="chat-brand-copy">
-          <Typography.Text strong>制度智能助手</Typography.Text>
+          <Typography.Text strong>制度管理模块</Typography.Text>
           <Tooltip title="返回平台首页" placement="right">
             <button type="button" className="platform-home-link" onClick={() => navigate('/')}>
               点击返回平台首页
@@ -803,7 +810,7 @@ export function ChatPage() {
       <nav className="chat-sidebar-nav" aria-label="平台快捷导航">
         <Button type="text" icon={<UiIcon icon={HomeOutlined} />} onClick={() => navigate('/')}>首页</Button>
         <Button type="text" icon={<UiIcon icon={BookOutlined} />} onClick={() => navigate('/documents')}>制度库</Button>
-        <Button type="text" icon={<UiIcon icon={SettingOutlined} />} onClick={() => navigate('/settings/about')}>服务说明</Button>
+        <Button type="text" icon={<UiIcon icon={FileSearchOutlined} />} onClick={() => navigate('/materials')}>配套资料库</Button>
       </nav>
     </div>
   );
@@ -827,6 +834,10 @@ export function ChatPage() {
           onCitation={selectCitation}
           onFeedback={(rating) => handleFeedback(item, rating)}
         />
+        {item.document_selection_mode === 'ALL' && <MaterialRecommendations
+          materialKind={item.reason_code === 'MATERIAL_SEARCH' ? ([...messages.slice(0, messages.indexOf(item))].reverse().find((entry) => entry.role === 'user')?.content.includes('案例') ? 'CASE' : 'IMAGE') : undefined}
+          query={item.retrieval_query || [...messages.slice(0, messages.indexOf(item))].reverse().find((entry) => entry.role === 'user')?.content || ''}
+        />}
         {item.id === latestAssistantId && !sending && item.answerability === 'PARTIAL'
           && item.reason_code === 'MISSING_USER_CONTEXT' && item.clarification_question ? (
           <section className="follow-up-prompts" aria-label="需要补充">
@@ -896,9 +907,10 @@ export function ChatPage() {
             onClick={() => setSessionDrawerOpen(true)}
           />
           <Typography.Text strong ellipsis>
-            {sessions.find((item) => item.id === sessionId)?.title ?? '制度智能助手'}
+            {sessions.find((item) => item.id === sessionId)?.title ?? '制度管理模块'}
           </Typography.Text>
           <span className="chat-main-header-spacer" />
+          <PortalAccount />
           {selectedCitation && !isDesktop ? (
             <Button type="text" onClick={() => setEvidenceDrawerOpen(true)}>查看证据</Button>
           ) : null}

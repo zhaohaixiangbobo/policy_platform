@@ -44,11 +44,11 @@ def knowledge_reader() -> KnowledgeReadService:
 
 def processes(session: Session) -> ProcessService:
     settings = get_settings()
-    return ProcessService(session, EvidenceReferenceValidator(settings.knowledge_database_path))
+    return ProcessService(session, EvidenceReferenceValidator(settings.knowledge_database_url))
 
 
 def evidence_bindings(session: Session) -> EvidenceBindingService:
-    return EvidenceBindingService(session, EvidenceReferenceValidator(get_settings().knowledge_database_path))
+    return EvidenceBindingService(session, EvidenceReferenceValidator(get_settings().knowledge_database_url))
 
 
 def relations(session: Session) -> RelationService:
@@ -397,7 +397,7 @@ def managed_documents(
     if page < 1 or page_size != 10:
         raise HTTPException(status_code=422, detail="制度治理列表固定每页10条")
 
-    with KnowledgeMetadataService(get_settings().knowledge_database_path) as knowledge:
+    with KnowledgeMetadataService(get_settings().knowledge_database_url) as knowledge:
         return MetadataApplicationService(session, knowledge, ingestion(session)).search(
             keyword=keyword,
             metadata_status=metadata_status,
@@ -409,13 +409,13 @@ def managed_documents(
 
 @router.get("/knowledge/series")
 def policy_series(_principal: Principal = Depends(require_permission("admin.access"))):
-    with KnowledgeMetadataService(get_settings().knowledge_database_path) as knowledge:
+    with KnowledgeMetadataService(get_settings().knowledge_database_url) as knowledge:
         return knowledge.list_series()
 
 
 @router.put("/knowledge/documents/{document_id}/series")
 def assign_policy_series(document_id: int, payload: PolicySeriesAssignRequest, _principal: Principal = Depends(require_permission("knowledge.metadata.manage", csrf=True))):
-    with KnowledgeMetadataService(get_settings().knowledge_database_path) as knowledge:
+    with KnowledgeMetadataService(get_settings().knowledge_database_url) as knowledge:
         try:
             return knowledge.assign_series(
                 document_id, series_id=payload.series_id, canonical_title=payload.canonical_title
@@ -459,7 +459,7 @@ def create_parse_correction(document_id: int, payload: ParseNodeCorrectionReques
 
 @router.get("/knowledge/documents/{document_id}/metadata")
 def metadata_detail(document_id: int, session: Session = Depends(get_db_session), _principal: Principal = Depends(require_permission("admin.access"))):
-    with KnowledgeMetadataService(get_settings().knowledge_database_path) as knowledge:
+    with KnowledgeMetadataService(get_settings().knowledge_database_url) as knowledge:
         try:
             return MetadataApplicationService(session, knowledge, ingestion(session)).detail(document_id)
         except LookupError as exc:
@@ -468,7 +468,7 @@ def metadata_detail(document_id: int, session: Session = Depends(get_db_session)
 
 @router.post("/knowledge/documents/{document_id}/metadata/drafts", status_code=201)
 def create_metadata_draft(document_id: int, payload: MetadataDraftCreateRequest, session: Session = Depends(get_db_session), principal: Principal = Depends(require_permission("knowledge.metadata.manage", csrf=True))):
-    with KnowledgeMetadataService(get_settings().knowledge_database_path) as knowledge:
+    with KnowledgeMetadataService(get_settings().knowledge_database_url) as knowledge:
         try:
             return MetadataApplicationService(session, knowledge, ingestion(session)).create_draft(
                 document_id, principal.user_id, payload.request_type, payload.change_reason
@@ -480,7 +480,7 @@ def create_metadata_draft(document_id: int, payload: MetadataDraftCreateRequest,
 @router.put("/knowledge/documents/{document_id}/metadata/{revision_id}")
 def update_metadata_revision(document_id: int, revision_id: int, payload: MetadataRevisionUpdateRequest, session: Session = Depends(get_db_session), _principal: Principal = Depends(require_permission("knowledge.metadata.manage", csrf=True))):
     values = payload.model_dump(exclude_unset=True)
-    with KnowledgeMetadataService(get_settings().knowledge_database_path) as knowledge:
+    with KnowledgeMetadataService(get_settings().knowledge_database_url) as knowledge:
         try:
             return MetadataApplicationService(session, knowledge, ingestion(session)).update(
                 document_id, revision_id, values
@@ -493,7 +493,7 @@ def update_metadata_revision(document_id: int, revision_id: int, payload: Metada
 
 @router.post("/knowledge/documents/{document_id}/metadata/{revision_id}/submit")
 def submit_metadata_revision(document_id: int, revision_id: int, session: Session = Depends(get_db_session), principal: Principal = Depends(require_permission("knowledge.metadata.manage", csrf=True))):
-    with KnowledgeMetadataService(get_settings().knowledge_database_path) as knowledge:
+    with KnowledgeMetadataService(get_settings().knowledge_database_url) as knowledge:
         try:
             return MetadataApplicationService(session, knowledge, ingestion(session)).submit(
                 document_id, revision_id, principal.user_id
@@ -506,7 +506,7 @@ def submit_metadata_revision(document_id: int, revision_id: int, session: Sessio
 
 @router.post("/knowledge/documents/{document_id}/metadata/{revision_id}/review")
 def review_metadata_revision(document_id: int, revision_id: int, payload: MetadataReviewRequest, session: Session = Depends(get_db_session), principal: Principal = Depends(require_permission("knowledge.metadata.review", csrf=True))):
-    with KnowledgeMetadataService(get_settings().knowledge_database_path) as knowledge:
+    with KnowledgeMetadataService(get_settings().knowledge_database_url) as knowledge:
         try:
             return MetadataApplicationService(session, knowledge, ingestion(session)).review(
                 document_id, revision_id, payload.approved, principal.user_id, payload.comment
@@ -527,7 +527,7 @@ def withdraw_metadata_revision(
 ):
     """撤回尚未发布的人工修订，释放该制度的唯一变更槽位。"""
 
-    with KnowledgeMetadataService(get_settings().knowledge_database_path) as knowledge:
+    with KnowledgeMetadataService(get_settings().knowledge_database_url) as knowledge:
         try:
             return MetadataApplicationService(session, knowledge, ingestion(session)).withdraw(
                 document_id, revision_id, principal.user_id, payload.reason

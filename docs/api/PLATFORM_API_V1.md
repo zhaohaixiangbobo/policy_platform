@@ -1,5 +1,13 @@
 # Platform API v1
 
+## 配套资料检索v3（2026-10-11）
+
+recommendations新增可选kind=CASE/IMAGE，仅缩小资料类型范围；返回search_version=material_search_v3，items新增可选match_reason、match_excerpt。纯案例/流程图聊天消息使用既有reason_code=MATERIAL_SEARCH，answer_status=ANSWER，无RAG/Citation执行信息；仍使用既有消息接口。权限与SELECTED约束见[设计及验证](../SUPPORTING_MATERIALS_V3.md)。
+
+## 配套资料v2（2026-10-09，取代旧七列契约）
+
+图片metadata仅 title/tags/summary；案例fields为title/person_category/position/rank/political_status/age/domains/problem_types/outcome/original，按类型拒绝额外字段。POST /api/v1/materials/imports/preview仅上传file，移除defaults；案例模板十列。列表移除来源/地区/日期筛选；items新增preview_text，全文仍仅详情返回。推荐search_version为material_search_v2。完整规则见[当前字段契约](../SUPPORTING_MATERIALS_V2.md)。OpenAPI已重新导出。
+
 > 文件说明：记录当前对浏览器公开的接口和迁移后的知识访问边界；机器可读契约见 `openapi.json`。
 
 ## 学习成效检测（learning_assessment_v1）
@@ -12,6 +20,20 @@
 
 模块开关关闭时业务接口404；写接口校验CSRF，所有请求校验身份与制度访问权限。
 最多15题，单用户最近一次24小时；后端不接受客户端传入标准答案。详细字段、示例与错误码见[功能文档](../LEARNING_ASSESSMENT.md#6-api)。
+
+## 配套资料库接口（supporting_materials_v2）
+
+- `GET /api/v1/materials`：q/kind/state/domain/sort/page；固定每页10条。普通用户仅PUBLISHED。
+- `GET /api/v1/materials/case-template`：下载标准十列空模板。
+- `POST /api/v1/materials/imports/preview`：仅multipart file，生成24小时预览；包含逐行中文错误与重复信息。
+- `POST /api/v1/materials/imports/{batch_id}/confirm`：仅预览创建人可确认，重复调用返回首次结果。
+- `POST /api/v1/materials/images`：multipart图片与metadata JSON（title/tags/summary，三项必填），保存草稿。
+- `GET /api/v1/materials/{id}?revision_id=...`：详情；历史版本仅管理员读取。
+- `PUT /api/v1/materials/{id}`：expected_version与fields；无改动不新建修订，案情原文不可替换。
+- `POST /api/v1/materials/actions`：action=PUBLISH|OFFLINE，items=[{id,expected_version}]，整批事务；发布校验失败提示带资料标题。
+- `GET /api/v1/materials/{id}/revisions/{revision_id}/file`：受控图片，不暴露本地路径。
+
+读取需要material.read；写入需要material.manage及CSRF。400字段/发布约束（中文字段名+原因），403权限，404不可访问，409重复/版本冲突/过期，422请求结构校验。类型仅CASE/IMAGE，模板未开放。详细格式见[配套资料v2说明](../SUPPORTING_MATERIALS_V2.md)。
 
 ## 健康检查
 
@@ -102,3 +124,12 @@ ChatMessageResponse增加可空rewrite_used、retrieval_query、rewrite_strategy
   才成为制度库和问答检索的正式事实。
 
 管理页的三个入口不直接调用草稿接口：页面先进入本地编辑态，只有发生人工修改并点击保存或提交时才创建草稿。
+# 配套资料推荐补充（2026-09-26）
+
+GET `/api/v1/materials/recommendations?q=...`，要求material.read，q最多2000字符。
+返回items（资料列表摘要）、search_version=material_search_v1、reference_only=true。
+只返回已发布版本，每类型最多2项。空主题返回空列表，不改变聊天/RAG契约。
+详细规则见[配套资料M4](../SUPPORTING_MATERIALS_M4.md)。
+# 学习辅助资料接口（2026-09-27）
+
+GET `/api/v1/learning-assessments/{assessment_id}/questions/{question_id}/materials`：学习开关、制度读取与资料读取权限，校验本人未过期已提交检测。404不可访问，409未提交；返回当前已发布辅助资料每类最多1条，不改变题目及评分契约。详见[设计](../LEARNING_MATERIALS.md)。

@@ -64,7 +64,7 @@ class PolicyParserPipeline:
 
     def __init__(
         self,
-        database_path: Path,
+        database_url: str,
         output_root: Path,
         config: ParserConfig | None = None,
         progress: ProgressCallback | None = None,
@@ -75,7 +75,7 @@ class PolicyParserPipeline:
         self.pdf_dir = self.output_root / "pdf"
         for directory in (self.accepted_dir, self.pdf_dir):
             directory.mkdir(parents=True, exist_ok=True)
-        self.db = ParserDatabase(database_path)
+        self.db = ParserDatabase(database_url)
         self.progress = progress or print
 
     def close(self) -> None:
@@ -205,7 +205,7 @@ class PolicyParserPipeline:
             page_mapping_coverage: float | None = None
             if self.config.render_pdf:
                 self._stage(run_id, "pdf_render", "调用本地 Word/docx2pdf 或服务器 LibreOffice 生成 PDF")
-                pdf_name = f"{source_path.stem}__{validation.checksum[:12]}.pdf"
+                pdf_name = f"{source_path.stem}__{validation.checksum[:12]}__run_{run_id}.pdf"
                 try:
                     render = render_docx_to_pdf(
                         revision.accepted_path,
@@ -222,7 +222,8 @@ class PolicyParserPipeline:
                         pdf_path=self._stored_path(render.pdf_path),
                         pdf_checksum=render.pdf_checksum,
                         render_source_checksum=revision.accepted_checksum,
-                        font_environment_hash=font_environment_hash(),
+                        font_environment_hash=render.metadata.get("environment", {}).get("fingerprint") or font_environment_hash(),
+                        render_metadata_json=json.dumps(render.metadata, ensure_ascii=False),
                     )
                     self._stage(run_id, "page_mapping", f"对齐 {render.page_count} 页 PDF 与 Source Block")
                     page_mapping = map_blocks_to_pdf_pages(render.pdf_path, blocks, block_ids)

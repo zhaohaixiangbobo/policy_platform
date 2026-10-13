@@ -1,5 +1,26 @@
 # 项目文档总台账
 
+**P5交付包核验（2026-10-12）：** 四ARM64归档已本地核验通过，当前操作入口为[UOS部署清单](deployment/P5_UOS_DEPLOYMENT_CHECKLIST.md)；先核验→用户上传→服务器只读检查，未部署。
+
+**P5构建隔离修订（2026-10-12）：** 专用policy-p5-arm64、BuildKit v0.21.0、镜像站manifest参数及四镜像直接tar导出；两个小探针待用户执行，不改变P4镜像存储。最新命令见[交付说明第3节](deployment/P5_ARM64_DELIVERY.md#3-专用构建器与手动执行本轮只做静态检查)。
+
+**P5交付准备（2026-10-12）：** [ARM64交付说明](deployment/P5_ARM64_DELIVERY.md)登记独立生产Compose、固定摘要候选清单及用户手动构建/导出命令；本轮不执行镜像构建或服务器部署。
+
+**P5 服务器基线（2026-10-12）：** 用户核实 /data 挂载、Docker/containerd 存储与启动保护完成；Compose v5.0.0-rc.2 暂保留。以[UOS 环境基线](deployment/UOS_P5_ENVIRONMENT_BASELINE.md)为准，不重复配置存储；尚未部署项目。
+
+**当前P4结论（2026-10-12）：本地最小验收通过，可进入P5，非生产放行。** 新api/web已启用，池采样/资源/门户配置/入口巡检通过；权威记录为[收口验收](testing/P4_CLOSEOUT_2026-10-12.md)（CURRENT）。下方“待构建”为此前过程。
+
+2026-10-12 门户入口版本 `portal_runtime_config_v1`：宿主JSON运行时外链配置已实现，待用户构建api/web后启用；使用说明及配置路径见[门户文档](PLATFORM_PORTAL.md)。无数据库迁移，原认证与制度入口不变。
+
+P4当前状态统一见 [2026-10-12收口验收](testing/P4_CLOSEOUT_2026-10-12.md)：用户业务闭环通过，存储及应用重建持久化一致；连接池采样代码和隔离验证完成，待用户重建镜像及最终巡检。该记录为IN_PROGRESS，优先于旧P4文档的阶段快照。
+
+2026-10-12 部署更新：P4 已应用 Knowledge `k0004_render_metadata`，启用正式 LO26.8.1.1 镜像及字体覆盖。
+API 8088 代理就绪、Worker 和字体检查通过；历史 PDF/索引保持不变。真实新上传闭环待验收。
+
+2026-10-12 转换更新：`lo-uno-compress-v1` 已接入代码；LibreOffice 26.8.1.1 + 外置授权字体门禁。
+Knowledge 代码 head 为 `k0004_render_metadata`（本轮未应用），Platform 仍 `0013_worker_leases`。
+运行环境未升级；启用、最小测试与验收边界见[字体部署说明](deployment/LIBREOFFICE_FONTS.md)。
+
 > 文件说明：这是 `policy-platform` 文档体系的统一入口。登记每份项目文档的用途、状态、
 > 权威范围和阅读时机；新增、替代、归档项目文档时必须同步维护本台账。
 
@@ -42,12 +63,33 @@
 | 文档 | 状态 | 启动必读 | 权威范围 |
 |---|---|---:|---|
 | `docs/README.md` | CURRENT | 是 | 文档分类、阅读顺序和维护规则 |
+| [`deployment/P5_UOS_DEPLOYMENT_CHECKLIST.md`](deployment/P5_UOS_DEPLOYMENT_CHECKLIST.md) | CURRENT | P5部署必读 | 20261012-224157-ab528108交付核验、上传白名单、只读环境检查与后续放行边界 |
+| [`deployment/P5_ARM64_DELIVERY.md`](deployment/P5_ARM64_DELIVERY.md) | IN_PROGRESS | P5交付必读 | ARM64候选锁、生产配置、离线交付命令及未执行验收边界 |
+| [`deployment/UOS_P5_ENVIRONMENT_BASELINE.md`](deployment/UOS_P5_ENVIRONMENT_BASELINE.md) | CURRENT | P5部署必读 | 用户实测服务器基线、已完成存储保护、版本保留和未部署边界 |
+| [`PLATFORM_PORTAL.md`](PLATFORM_PORTAL.md) | CURRENT | 门户/认证任务必读 | platform_portal_v1；双登录入口、共用认证、六模块门户、构建开关；完整实屏验收待完成 |
+| [`LEARNING_MATERIALS.md`](LEARNING_MATERIALS.md) | CURRENT | 学习资料推荐必读 | learning_materials_v1；提交后并列入口、本人/期限/权限校验、每类1条；实屏待验收 |
+| [`testing/SUPPORTING_MATERIALS_M4_VERIFICATION_2026-09-26.md`](testing/SUPPORTING_MATERIALS_M4_VERIFICATION_2026-09-26.md) | CURRENT | M4验收时 | 23项后端、14项前端测试及typecheck/build通过；真实模型和浏览器手工验收待完成 |
+| [`SUPPORTING_MATERIALS_M4.md`](SUPPORTING_MATERIALS_M4.md) | REFERENCE | 资料推荐演进 | 旧评分已由material_search_v3替代；ALL问答及学习提交后辅助资料 |
+| [`SUPPORTING_MATERIALS_V2.md`](SUPPORTING_MATERIALS_V2.md) | CURRENT | 资料字段契约 | supporting_materials_v2；十列案例、三字段图片、手动发布 |
+| [`SUPPORTING_MATERIALS_V3.md`](SUPPORTING_MATERIALS_V3.md) | CURRENT | 检索与聊天任务首先阅读 | material_search_v3；主题匹配、原文片段、纯案例/流程图分流 |
+| [`SUPPORTING_MATERIALS.md`](SUPPORTING_MATERIALS.md) | REFERENCE | 历史机制参考 | v1七列字段已由v2替代；权限和版本机制保留 |
+| [`testing/SUPPORTING_MATERIALS_V2_2026-10-09.md`](testing/SUPPORTING_MATERIALS_V2_2026-10-09.md) | CURRENT | v2验收与清理记录 | 最小测试、真实样本校验、旧资料清空范围 |
+| [`testing/SUPPORTING_MATERIALS_VERIFICATION_2026-09-25.md`](testing/SUPPORTING_MATERIALS_VERIFICATION_2026-09-25.md) | CURRENT | 配套资料验收时 | 隔离最小测试、迁移与前端构建；实屏验收待完成 |
 | [`LEARNING_ASSESSMENT.md`](LEARNING_ASSESSMENT.md) | CURRENT | 自测任务必读 | 生成learning_assessment_v2；UI learning_assessment_ui_v2；最多15题、24小时；已有模型验证记录，浏览器验收待完成 |
 | [`testing/LEARNING_UI_VERIFICATION_2026-09-24.md`](testing/LEARNING_UI_VERIFICATION_2026-09-24.md) | CURRENT | 自测UI验收时 | UI v2.1轻量视觉、等高双栏、进度面板；三种桌面宽度实屏验收待完成；后端保持不变 |
 | [`testing/LEARNING_ASSESSMENT_VERIFICATION_2026-09-24.md`](testing/LEARNING_ASSESSMENT_VERIFICATION_2026-09-24.md) | CURRENT | 自测验收时 | 17项最小测试、类型检查、本机0011迁移；真实模型超时待验收，空库问题已由后续记录关闭 |
 | [`testing/WORKER_AND_MIGRATION_FIX_2026-09-24.md`](testing/WORKER_AND_MIGRATION_FIX_2026-09-24.md) | CURRENT | Worker/迁移必读 | worker_supervision_v1；固定历史迁移、隔离SQLite重放；head保留0011 |
-| [`deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md`](deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md) | CURRENT | 部署/索引维护必读 | docker_ready_v1、index_storage_retirement_v1；1—7存储已退役，保留8、9；双MySQL与Compose为下一阶段建议 |
-| [`deployment/container.env.example`](deployment/container.env.example) | REFERENCE | 容器准备时 | Linux环境模板；实际Compose尚未打包 |
+| [`deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md`](deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md) | CURRENT / IN_PROGRESS | 数据库迁移/部署必读 | postgres_compose_plan_v1.3：P0—P3本地最小验收通过；P4构建配置已准备，待用户构建，P5待实施，旧存储保留 |
+| [`decisions/ADR-0006-POSTGRES-DATABASE-BOUNDARY.md`](decisions/ADR-0006-POSTGRES-DATABASE-BOUNDARY.md) | CURRENT | 数据库任务必读 | PG17双database、双迁移和权限边界 |
+| [`testing/POSTGRES_P0_P1_VERIFICATION_2026-10-10.md`](testing/POSTGRES_P0_P1_VERIFICATION_2026-10-10.md) | HISTORICAL | P0/P1追溯 | 当时环境及19项验证；当前运行见P2 |
+| [`testing/POSTGRES_P2_VERIFICATION_2026-10-10.md`](testing/POSTGRES_P2_VERIFICATION_2026-10-10.md) | CURRENT | PG开发启动必读 | P1收口、P2 Core仓储与迁移、12项测试、初始化/启动及P3边界 |
+| [`testing/POSTGRES_P3_PROGRESS_2026-10-10.md`](testing/POSTGRES_P3_PROGRESS_2026-10-10.md) | HISTORICAL | P3首批追溯 | 初始互斥及README更新记录 |
+| [`testing/POSTGRES_P3_VERIFICATION_2026-10-11.md`](testing/POSTGRES_P3_VERIFICATION_2026-10-11.md) | CURRENT | P3开发/运维必读 | 0013/k0003；本地最小验收及用户登录态联合验收通过，有条件进入P4；专项边界保留 |
+| [`testing/DOCKER_P4_PROGRESS_2026-10-11.md`](testing/DOCKER_P4_PROGRESS_2026-10-11.md) | CURRENT / IN_PROGRESS | P4运行验收必读 | 镜像/空库/管理员/六服务就绪；6项最小测试，巡检及Web DNS修复；待业务闭环和持久化验收 |
+| [`deployment/COMPOSE_LOCAL.md`](deployment/COMPOSE_LOCAL.md) | CURRENT / IN_PROGRESS | P4本地操作必读 | 固定摘要、手动构建、独立卷、迁移指纹、初始化及更新边界 |
+| [`deployment/LIBREOFFICE_FONTS.md`](deployment/LIBREOFFICE_FONTS.md) | CURRENT / IN_PROGRESS | PDF字体部署必读 | 只读授权字体挂载与9项匹配通过；两份试转字体嵌入正确，Word分页对照未通过 |
+| [`deployment/archived-sqlite-tools/README.md`](deployment/archived-sqlite-tools/README.md) | ARCHIVED | 历史工具追溯 | 登记目录内六份源码快照；原执行入口已阻断，不能用于PG运维 |
+| [`deployment/container.env.example`](deployment/container.env.example) | REFERENCE | 容器准备时 | 已切换PG URL及生产命名空间占位；完整Compose验收待P4 |
 | [`RAG_QUALITY_EVOLUTION_PLAN.md`](RAG_QUALITY_EVOLUTION_PLAN.md) | IN_PROGRESS | 问答增强任务必读 | 方案1.3；S1—S3代码完成；S3相关34项测试及类型检查通过；真实模型/浏览器待验收；S4/S5未开始 |
 | [`../README.md`](../README.md) | CURRENT | 是 | 工程结构、工具链和快速启动 |
 | [`PROJECT_HANDOFF.md`](PROJECT_HANDOFF.md) | CURRENT | 是 | 当前工程状态、边界和交接约束 |
@@ -70,6 +112,7 @@
 | [`decisions/ADR-0002-UNIFIED-KNOWLEDGE-MODULE.md`](decisions/ADR-0002-UNIFIED-KNOWLEDGE-MODULE.md) | CURRENT | 统一知识模块、双数据库和数据所有权 |
 | [`decisions/ADR-0003-RAG-HTTP-QUERY-BOUNDARY.md`](decisions/ADR-0003-RAG-HTTP-QUERY-BOUNDARY.md) | SUPERSEDED | 已被ADR-0004取代 |
 | [`decisions/ADR-0004-IN-PROCESS-RAG-QUERY.md`](decisions/ADR-0004-IN-PROCESS-RAG-QUERY.md) | CURRENT | Platform进程内RAG问答边界 |
+| [`decisions/ADR-0005-SUPPORTING-MATERIALS.md`](decisions/ADR-0005-SUPPORTING-MATERIALS.md) | CURRENT | 配套资料归Platform独立资源，不进入制度流水线 |
 | [`decisions/KNOWLEDGE_MODULE_MIGRATION_PLAN.md`](decisions/KNOWLEDGE_MODULE_MIGRATION_PLAN.md) | HISTORICAL | 知识模块迁移执行计划和验收依据 |
 
 ### 4.3 历史规划与实施记录
@@ -85,6 +128,7 @@
 
 | 文档 | 状态 | 保留原因 |
 |---|---|---|
+| [`testing/CASE_EXTRACTION_EVALUATION_2026-09-25.md`](testing/CASE_EXTRACTION_EVALUATION_2026-09-25.md) | REFERENCE | 配套资料前置评估；两轮各6条真实模型调用，七列样本供用户审核，尚未批准自动入库 |
 | [`testing/QUERY_TIMING_VERIFICATION_2026-09-19.md`](testing/QUERY_TIMING_VERIFICATION_2026-09-19.md) | HISTORICAL | 引用状态、补充卡片和三个慢问题分段复测；捕获Reranker连接重试 |
 | [`testing/KNOWLEDGE_MIGRATION_VERIFICATION_2026-08-29.md`](testing/KNOWLEDGE_MIGRATION_VERIFICATION_2026-08-29.md) | HISTORICAL | 知识模块迁移当日验证证据 |
 | [`testing/M2_M4_MODERN_BROWSER_SMOKE_2026-08-23.md`](testing/M2_M4_MODERN_BROWSER_SMOKE_2026-08-23.md) | HISTORICAL | 迁移前M2-M4浏览器冒烟记录 |
@@ -126,7 +170,7 @@
 | 部分 | 当前代码使用版本/行为 | 事实源 | 计划变化（尚未实施） |
 |---|---|---|---|
 | 应用架构 | ADR-0002 + ADR-0004；进程内KnowledgeService，无8010依赖 | [ADR-0004](decisions/ADR-0004-IN-PROCESS-RAG-QUERY.md) | 保持边界 |
-| 部署准备（2026-09-24） | docker_ready_v1；跨平台入口、外部配置、Linux依赖标记 | [部署准备](deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md) | 双MySQL、知识库SQLAlchemy/Alembic和Compose尚未实施 |
+| 部署准备与数据库迁移 | postgres_compose_plan_v1.3；P0—P3本地最小验收通过 | [部署方案](deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md) | 当前代码PG-only，旧存储保留；有条件进入P4，非生产放行，专项边界继续验收 |
 | 索引存储生命周期（2026-09-24） | index_storage_retirement_v1；已退役1—7，保留8、9；复用检查物理存储 | [存储维护](deployment/DOCKER_READY_AND_INDEX_RETIREMENT.md#3-旧索引复用和退役契约) | 受控恢复、孤儿清理和自动定期清理未实现 |
 | Platform HTTP接口 | /api/v1 | [API说明](api/PLATFORM_API_V1.md)、[OpenAPI](api/openapi.json) | S2增加公开回答字段 |
 | 知识结果契约 | rag_api_v1_2；兼容读取v1_1 | [contracts.py](../backend/knowledge/contracts.py) | S2已实现 |
@@ -145,7 +189,9 @@
 | Quality Gate | answer_quality_gate_v3；默认关闭，可配置 | [quality_gate.py](../backend/knowledge/rag/quality_gate.py)、[runtime.py](../backend/knowledge/rag/runtime.py) | 启用时包含部分答案事实校验 |
 | 语义验证Schema | support_verifier_schema_v2 / support_verifier_input_v2 | [quality_gate.py](../backend/knowledge/rag/quality_gate.py) | 不新增默认模型调用 |
 | Citation / Evidence UID | citation_v1 / evidence_uid_v1 | [models.py](../backend/knowledge/rag/models.py) | 保持；父块使用自己的证据身份 |
-| Platform迁移最新头 | 0011_learning_assessment；历史结构已冻结，SQLite空库及增量重放通过 | [修复记录](testing/WORKER_AND_MIGRATION_FIX_2026-09-24.md) | 未切换MySQL，需另做MySQL环境验证 |
+| Platform迁移最新头 | 0013_worker_leases；历史迁移保留 | [PG验证](testing/POSTGRES_P3_VERIFICATION_2026-10-11.md) | 三类任务租约字段；版本表app只读 |
+| Knowledge迁移最新头 | k0003_worker_operation | [PG验证](testing/POSTGRES_P3_VERIFICATION_2026-10-11.md) | 操作代次/回执；API/Worker不执行DDL |
+| 配套资料库（2026-10-11） | supporting_materials_v2 / material_search_v3；字段不变，主题匹配及纯资料聊天分流 | [当前字段](SUPPORTING_MATERIALS_V2.md) / [检索分流](SUPPORTING_MATERIALS_V3.md) | 问答/学习推荐已接入；BM25未实施；视觉模型忽略 |
 | Worker启动与停止 | worker_supervision_v1；真实PID、本机角色锁、功能开关、阶段边界停止 | [本机运行](deployment/LOCAL_DEVELOPMENT.md) | 实际业务长任务Ctrl+C由用户手动验收 |
 | 学习成效检测 | learning_assessment_v2；单题一批、生成3路并发/串行审校，最多15题，24小时槽位；UI learning_assessment_ui_v2双分区 | [功能说明](LEARNING_ASSESSMENT.md) | 已有真实模型10题验证记录；浏览器人工验收及模型稳定性复测待完成，无长期考试管理 |
 | 前端包 | @policy-platform/frontend 0.1.0 | [package.json](../frontend/package.json) | 包版本不代表RAG契约版本 |
@@ -154,3 +200,5 @@
 | 查询耗时追踪 | query_timing_v1；阶段、HTTP尝试、异常及校验次数写日志 | [telemetry.py](../backend/knowledge/telemetry.py) | 不改变RAG/Context/Citation契约版本 |
 
 模型名和服务修订可由环境覆盖，不能把配置中的deployment-unreported或默认模型名写成已核验部署版本。IndexRun、ParseRun、ChunkRun是数据运行编号，不是上述算法/契约版本。
+
+2026-09-27 学习检测更新：Prompt 保持 learning_assessment_v2；模型生成/审校加入单调用最多三次有限重试、脱敏失败日志及分类错误提示。最小学习回归23项通过；需重启学习Worker加载，真实15题待人工复测。详见 [学习检测说明](LEARNING_ASSESSMENT.md)。

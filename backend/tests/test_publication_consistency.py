@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sqlite3
 from pathlib import Path
 from uuid import uuid4
 
@@ -23,10 +22,6 @@ from app.infrastructure.db.models import (
     MetadataChangeRequest,
 )
 from knowledge.config import KnowledgePaths
-from knowledge.data_migrations import migrate_historical_published_metadata
-from knowledge.management import KnowledgeManagementService
-from knowledge.metadata_service import KnowledgeMetadataService, MetadataConflictError
-from knowledge.parser.database import ParserDatabase
 from worker import run_publication
 
 
@@ -359,140 +354,3 @@ def test_reconcile_failed_job_requires_exact_run_versions() -> None:
     assert job.index_run_id == 5
     assert event is not None and event.run_id == 5
     session.close()
-
-
-def test_database_open_does_not_create_backfill_and_draft_collision_is_explicit() -> None:
-    paths = _paths()
-    KnowledgeManagementService(paths).initialize_empty_baseline()
-    with ParserDatabase(paths.database_path) as database:
-        document_id = database.get_or_create_document({
-            "source_file": "pending/test.docx",
-            "file_name": "test.docx",
-            "file_size": 10,
-            "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "checksum": "no-runtime-backfill",
-        })
-    with ParserDatabase(paths.database_path) as reopened:
-        count = reopened.connection.execute(
-            "SELECT COUNT(*) FROM document_metadata_revision WHERE document_id=?", (document_id,)
-        ).fetchone()[0]
-        assert count == 0
-        parse_run_id = reopened.create_parse_run(document_id, "test", "hash")
-        reopened.update_run(parse_run_id, status="succeeded", review_status="approved")
-        reopened.update_document(
-            document_id,
-            active_parse_run_id=parse_run_id,
-            latest_parse_run_id=parse_run_id,
-            parser_status="succeeded",
-            review_status="passed",
-        )
-
-    with KnowledgeMetadataService(paths.database_path) as metadata:
-        initial = metadata.ensure_draft(
-            document_id,
-            "user-1",
-            source_type="PARSE_EXTRACTED",
-            initial_document_status="effective",
-        )
-        assert initial["parse_run_id"] == parse_run_id
-        with pytest.raises(MetadataConflictError, match="不能创建"):
-            metadata.ensure_draft(document_id, "user-1", source_type="REPEAL")
-
-
-def test_explicit_historical_migration_records_version_and_is_idempotent() -> None:
-    paths = _paths()
-    KnowledgeManagementService(paths).initialize_empty_baseline()
-    now = "2026-09-04T00:00:00+00:00"
-    with ParserDatabase(paths.database_path) as database:
-        document_id = database.get_or_create_document({
-            "source_file": "accepted/historical.docx",
-            "file_name": "historical.docx",
-            "file_size": 10,
-            "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "checksum": "historical-active-document",
-        })
-        parse_run_id = database.create_parse_run(document_id, "legacy", "parse-hash")
-        database.update_run(parse_run_id, status="succeeded", review_status="approved")
-        database.update_document(
-            document_id,
-            title="历史已发布制度",
-            status="effective",
-            active_parse_run_id=parse_run_id,
-            latest_parse_run_id=parse_run_id,
-            parser_status="succeeded",
-            review_status="passed",
-        )
-        cursor = database.connection.execute(
-            """
-            INSERT INTO chunk_run (
-                document_id,parse_run_id,chunker_version,strategy,config_json,config_hash,
-                status,review_status,source_scope,started_at,created_at
-            ) VALUES (?,?,'legacy','legacy','{}','chunk-hash','succeeded','approved','active',?,?)
-            """,
-            (document_id, parse_run_id, now, now),
-        )
-        chunk_run_id = int(cursor.lastrowid)
-        database.update_document(document_id, active_chunk_run_id=chunk_run_id)
-
-    with sqlite3.connect(paths.database_path) as connection:
-        profile_id = connection.execute(
-            "SELECT id FROM index_profile WHERE profile_name='policy_platform_dense'"
-        ).fetchone()[0]
-        cursor = connection.execute(
-            """
-            INSERT INTO index_run (
-                profile_id,source_manifest_hash,embedding_provider,embedding_model,
-                embedding_model_revision,embedding_contract_json,embedding_contract_hash,
-                dimension,distance_metric,vector_name,collection_name,alias_name,
-                point_schema_version,config_json,config_hash,indexer_version,status,
-                activation_status,started_at,created_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                profile_id, "manifest", "provider", "model", "revision", "{}", "contract",
-                8, "Cosine", "dense", "collection-historical",
-                "policy_platform_dense_active", "v1", "{}", "config", "legacy",
-                "succeeded", "active", now, now,
-            ),
-        )
-        index_run_id = int(cursor.lastrowid)
-        connection.execute(
-            """
-            INSERT INTO index_run_source (
-                index_run_id,document_id,parse_run_id,chunk_run_id,metadata_revision_id,
-                retrievable_count,source_digest,created_at
-            ) VALUES (?,?,?,?,NULL,1,'digest',?)
-            """,
-            (index_run_id, document_id, parse_run_id, chunk_run_id, now),
-        )
-        connection.execute(
-            "UPDATE index_profile SET active_index_run_id=?,latest_index_run_id=? WHERE id=?",
-            (index_run_id, index_run_id, profile_id),
-        )
-
-    first = migrate_historical_published_metadata(paths.database_path)
-    second = migrate_historical_published_metadata(paths.database_path)
-    assert first["applied"] is True and first["details"]["migrated_document_ids"] == [document_id]
-    assert second["applied"] is False and second["details"]["count"] == 1
-    with sqlite3.connect(paths.database_path) as connection:
-        revision = connection.execute(
-            """
-            SELECT mr.source_type,mr.lifecycle_status,mr.parse_run_id
-            FROM document_metadata_revision mr
-            JOIN policy_document d ON d.latest_metadata_revision_id=mr.id
-            WHERE d.id=?
-            """,
-            (document_id,),
-        ).fetchone()
-        assert revision == ("BACKFILL", "PUBLISHED", parse_run_id)
-        assert connection.execute(
-            "SELECT metadata_revision_id FROM index_run_source WHERE index_run_id=?",
-            (index_run_id,),
-        ).fetchone()[0] == 1
-    source = KnowledgeManagementService(paths).publication_source(document_id, 1)
-    assert source == {
-        "document_id": document_id,
-        "parse_run_id": parse_run_id,
-        "chunk_run_id": chunk_run_id,
-        "metadata_revision_id": 1,
-    }

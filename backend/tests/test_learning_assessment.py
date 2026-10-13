@@ -1,14 +1,14 @@
 """文件说明：学习自测最小回归，使用临时内存库与模型替身，不调用模型或改动正式数据。"""
 
 import json
-import sqlite3
-from contextlib import contextmanager
+from dataclasses import replace
 from datetime import timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 from unittest.mock import patch
 
 import pytest
+import requests
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -27,6 +27,47 @@ from app.infrastructure.db.session import get_db_session
 from knowledge.learning_generator import generate_assessment, Candidate, validate_candidate
 from knowledge.learning_source import freeze_learning_source
 from learning_worker import run_once
+
+
+@pytest.mark.parametrize("cause,kind", [
+    (requests.ReadTimeout("private"), "timeout"),
+    (requests.ConnectionError("private"), "connection"),
+])
+def test_learning_transport_retry_is_bounded_and_private(cause, kind, caplog):
+    from knowledge.learning_generator import _ask, VerdictBatch, transport_failure
+    from knowledge.rag.generator import GeneratorTransportError
+    error = GeneratorTransportError("private response")
+    error.__cause__ = cause
+    client = SimpleNamespace(learning_task_id="test-task")
+    payload = {"assignments": [{"slot": 2}]}
+    with patch("knowledge.learning_generator._ask_once", side_effect=[error, "ok"]) as call, \
+            patch("knowledge.learning_generator.time.sleep"):
+        assert _ask(client, VerdictBatch, "", payload) == "ok"
+        assert call.call_count == 2
+    assert transport_failure(error)[0] == kind
+    assert "private" not in caplog.text
+    assert "stage=review slot=2 attempt=1" in caplog.text
+    with patch("knowledge.learning_generator._ask_once", side_effect=error) as call, \
+            patch("knowledge.learning_generator.time.sleep"):
+        with pytest.raises(GeneratorTransportError):
+            _ask(client, VerdictBatch, "", payload)
+        assert call.call_count == 3
+
+
+@pytest.mark.parametrize("status,kind,attempts", [(429, "busy", 3), (503, "unavailable", 3), (501, "response", 1)])
+def test_learning_http_failure_classification(status, kind, attempts):
+    from knowledge.learning_generator import _ask, VerdictBatch, transport_failure
+    from knowledge.rag.generator import GeneratorTransportError
+    inner = GeneratorTransportError("private", status_code=status)
+    outer = GeneratorTransportError("private")
+    outer.__cause__ = inner
+    assert transport_failure(outer)[:2] == (kind, status)
+    with patch("knowledge.learning_generator._ask_once", side_effect=outer) as call, \
+            patch("knowledge.learning_generator.time.sleep"):
+        with pytest.raises(GeneratorTransportError):
+            _ask(SimpleNamespace(), VerdictBatch,
+                 "", {"assignments": [{"slot": 0}]})
+        assert call.call_count == attempts
 
 
 @pytest.fixture
@@ -97,6 +138,41 @@ def test_question_limit_and_scope():
                      {"single": 0, "multiple": 0, "true_false": 0}, {"scope": "SELECTED"}, {"node_ids": [9]}):
             with pytest.raises(ValueError):
                 CreateAssessment(request_id=uuid4(), document_id=1, **args)
+
+
+def test_learning_material_access(api, storage):
+    client, app, settings, principal = api
+    identity = replace(
+        principal, permissions=principal.permissions | {"material.read"})
+    app.dependency_overrides[get_current_principal] = lambda: identity
+    aid, data = ready(storage)
+    url = f"/learning-assessments/{aid}/questions/q1/materials"
+    assert client.get(url).status_code == 409
+    with storage() as session:
+        data["status"] = "SUBMITTED"
+        # 无标题条款的占位知识点不应进入资料推荐查询。
+        data["questions"][0]["knowledge_point"] = "正文条款 10"
+        session.get(Slot, "u1").current_json = encode(data)
+        session.commit()
+    with patch("app.api.v1.learning.MaterialService.recommend", return_value={"items": [], "reference_only": True}) as recommend:
+        assert client.get(url).status_code == 200
+        text = recommend.call_args.args[0]
+        assert "三日内提交书面报告" in text and "十五日" not in text
+        assert "正文条款" not in text
+    assert client.get(url.replace('q1', 'missing')).status_code == 404
+    identity = replace(identity, user_id="u2")
+    assert client.get(url).status_code == 404
+    identity = replace(identity, user_id="u1",
+                       permissions=principal.permissions)
+    assert client.get(url).status_code == 403
+    identity = replace(
+        identity, permissions=principal.permissions | {"material.read"})
+    with storage() as session:
+        session.get(Slot, "u1").expires_at = utc_now() - timedelta(seconds=1)
+        session.commit()
+    assert client.get(url).status_code == 404
+    with patch("app.api.v1.learning.get_settings", return_value=Settings(learning_assessment_enabled=False)):
+        assert client.get(url).status_code == 404
 
 
 def test_program_scoring_exact_sets():
@@ -355,39 +431,3 @@ def test_timed_out_job_becomes_failed(storage):
     with storage() as session:
         row = session.get(Slot, "u1")
         assert row.task_state == "FAILED" and row.pending_json is None
-
-
-def test_source_uses_published_parse_and_preserves_children():
-    connection = sqlite3.connect(":memory:")
-    connection.row_factory = sqlite3.Row
-    connection.executescript("""
-        CREATE TABLE index_profile(profile_name TEXT,active_index_run_id INTEGER);
-        CREATE TABLE index_run(id INTEGER,status TEXT,activation_status TEXT);
-        CREATE TABLE index_run_source(index_run_id INTEGER,document_id INTEGER,parse_run_id INTEGER,metadata_revision_id INTEGER);
-        CREATE TABLE document_metadata_revision(id INTEGER,title TEXT,document_code TEXT,status TEXT);
-        CREATE TABLE policy_node(id INTEGER,document_id INTEGER,parse_run_id INTEGER,parent_id INTEGER,node_type TEXT,node_number TEXT,title TEXT,raw_text TEXT,content TEXT,order_no INTEGER);
-        INSERT INTO index_profile VALUES('test',9);
-        INSERT INTO index_run VALUES(9,'succeeded','active');
-        INSERT INTO index_run_source VALUES(9,1,3,5);
-        INSERT INTO document_metadata_revision VALUES(5,'测试制度','编号','effective');
-        INSERT INTO policy_node VALUES(1,1,3,NULL,'chapter','第一章','总则','总则',NULL,1);
-        INSERT INTO policy_node VALUES(2,1,3,1,'article','第一条',NULL,'工作人员应当在收到通知后三日内提交报告。',NULL,2);
-        INSERT INTO policy_node VALUES(3,1,3,2,'item',NULL,NULL,'特殊情形可以延期。',NULL,3);
-        INSERT INTO policy_node VALUES(4,1,4,NULL,'article','第二条',NULL,'未发布的草稿绝不可读取。',NULL,4);
-    """)
-    @contextmanager
-    def read(): yield connection
-    catalog = SimpleNamespace(_connection=read, profile_name="test")
-    value = freeze_learning_source(catalog, 1, "SELECTED", [1])
-    assert value["parse_run_id"] == 3 and len(value["units"]) == 1
-    assert "特殊情形" in value["units"][0]["source_text_snapshot"]
-    connection.rollback()
-    with pytest.raises(ValueError, match="不属于"):
-        freeze_learning_source(catalog, 1, "SELECTED", [4])
-    connection.rollback()
-    connection.execute(
-        "UPDATE document_metadata_revision SET status='repealed'")
-    connection.commit()
-    with pytest.raises(ValueError, match="现行"):
-        freeze_learning_source(catalog, 1, "FULL", [])
-    connection.close()

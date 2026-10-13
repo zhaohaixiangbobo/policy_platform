@@ -1,0 +1,886 @@
+/* 文件说明：配套资料库的轻量双栏卡片布局；样式限定模块，不改变其他业务页面。 */
+.materials-page {
+    max-width: 1660px;
+    margin: 0 auto;
+    color: #192944;
+}
+
+.materials-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    margin: 4px 0 24px;
+}
+
+.materials-header h2.ant-typography {
+    margin: 0 0 5px;
+    font-size: 28px;
+    font-weight: 600;
+}
+
+.materials-search {
+    width: clamp(230px, 25vw, 430px);
+}
+
+.materials-layout {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 22px;
+    align-items: start;
+}
+
+.materials-page .ant-card {
+    border: 1px solid #edf1f7;
+    border-radius: 12px;
+    box-shadow: 0 3px 16px #244c8310;
+}
+
+.materials-filters {
+    position: sticky;
+    top: 88px;
+}
+
+.materials-filters .ant-card-body {
+    padding: 20px;
+}
+
+.materials-filters label {
+    display: block;
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.materials-filters .ant-select {
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+.materials-filters input {
+    margin-bottom: 8px;
+}
+
+.materials-statistics {
+    margin-top: 22px;
+    padding-top: 20px;
+    border-top: 1px solid #edf1f7;
+}
+
+.materials-statistics>span {
+    display: block;
+    color: #1f2d45;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.materials-statistics>div {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.materials-statistics>div>div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    border-radius: 10px;
+    padding: 14px 4px;
+    text-align: center;
+    color: #6b788f;
+    font-size: 12px;
+}
+
+.materials-statistics>div>div>span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    margin-bottom: 2px;
+    border-radius: 8px;
+    font-size: 16px;
+}
+
+.materials-statistics strong {
+    color: #1f2d45;
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+/* 三张统计卡分别使用蓝/绿/紫浅色底，图标底色略深一层 */
+.materials-statistics .is-all {
+    background: #f1f6ff;
+}
+
+.materials-statistics .is-all>span {
+    background: #dce9ff;
+    color: #2f6fed;
+}
+
+.materials-statistics .is-case {
+    background: #f0faf4;
+}
+
+.materials-statistics .is-case>span {
+    background: #d8f3e3;
+    color: #21a35c;
+}
+
+.materials-statistics .is-image {
+    background: #f6f1ff;
+}
+
+.materials-statistics .is-image>span {
+    background: #e8dcff;
+    color: #7c3aed;
+}
+
+.materials-results {
+    min-width: 0;
+}
+
+.materials-toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    background: white;
+    border-radius: 10px;
+    padding: 0 16px;
+    margin-bottom: 14px;
+}
+
+.materials-toolbar .ant-tabs-nav {
+    margin: 0;
+}
+
+.materials-toolbar .ant-tabs {
+    min-width: 0;
+}
+
+.materials-batch {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 14px;
+    color: #8290a5;
+    font-size: 12px;
+}
+
+.materials-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.material-card .ant-card-body {
+    padding: 20px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.material-card-main {
+    display: flex;
+    gap: 16px;
+    flex: 1;
+}
+
+.material-thumbnail {
+    flex: 0 0 104px;
+    width: 104px;
+    height: 116px;
+    background: #fff;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.material-thumbnail .ant-image {
+    width: 100%;
+}
+
+.material-thumbnail img {
+    object-fit: contain;
+    height: 116px;
+    width: 100%;
+}
+
+.material-thumbnail.is-case {
+    flex-basis: 46px;
+    width: 46px;
+    height: 48px;
+    color: #3477fa;
+    font-size: 27px;
+    background: #edf4ff;
+}
+
+.material-card-copy {
+    min-width: 0;
+    flex: 1;
+}
+
+.material-title {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    border: 0;
+    background: none;
+    padding: 0;
+    margin: 5px 0;
+    color: #1b2b47;
+    font-size: 15px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    line-height: 1.6;
+}
+
+.material-title:hover {
+    color: #2865e7;
+}
+
+.material-card-copy>p {
+    font-size: 13px;
+    color: #8190a5;
+    line-height: 1.7;
+    margin: 4px 0 10px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.material-tags .ant-tag {
+    border: 0;
+    background: #edf4ff;
+    color: #4a7cca;
+    font-size: 11px;
+    margin-bottom: 4px;
+}
+
+.material-card footer {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-top: 18px;
+    color: #8a96a8;
+    font-size: 11px;
+}
+
+.material-card footer>span {
+    flex: 1;
+    overflow-wrap: anywhere;
+}
+
+.material-card footer .ant-btn {
+    color: #386ff1;
+    border-color: #dfe8ff;
+}
+
+.material-match {
+    margin-top: 10px;
+    color: #627695;
+    background: #f7f9fd;
+    padding: 8px;
+    font-size: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.materials-results>.ant-pagination {
+    margin: 24px 0;
+    text-align: right;
+}
+
+.material-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 20px;
+}
+
+.material-text,
+.material-original {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.9;
+}
+
+/* 详情使用独立抽屉根类：案例分区阅读，流程图预览与资料信息并列。 */
+.material-detail-drawer .ant-drawer-header {
+    padding: 18px 28px;
+}
+
+.material-detail-drawer .ant-drawer-title {
+    font-size: 18px;
+}
+
+.material-detail-drawer .ant-drawer-body {
+    padding: 0;
+    overflow: hidden;
+}
+
+.material-detail-shell {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    color: #25334a;
+}
+
+.material-detail-header {
+    flex-shrink: 0;
+    max-height: 44%;
+    overflow-y: auto;
+    padding: 24px 28px 16px;
+}
+
+/* 案例与流程图共用紧凑的两层标题区，把首屏高度优先留给主体内容。 */
+.material-detail-header.is-compact {
+    max-height: none;
+    padding: 14px 28px 12px;
+    overflow: visible;
+    border-bottom: 1px solid #edf0f5;
+}
+
+.material-detail-title-row,
+.material-detail-heading {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.material-detail-title-row {
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.material-detail-heading {
+    gap: 10px;
+}
+
+.material-detail-heading>.ant-tag {
+    flex: none;
+    margin: 0;
+}
+
+.material-detail-header.is-compact h3.ant-typography {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 22px;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.material-detail-header.is-compact .material-detail-meta {
+    margin-top: 9px;
+    gap: 6px 10px;
+}
+
+.material-detail-header.is-compact .material-detail-version {
+    margin-top: 0;
+    padding-left: 10px;
+    border-left: 1px solid #e1e6ee;
+}
+
+.material-detail-header.is-compact .material-detail-version .ant-select {
+    min-width: 132px;
+}
+
+.material-detail-header h3.ant-typography {
+    margin: 8px 0 12px;
+    font-size: 25px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.material-detail-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    color: #788498;
+    font-size: 13px;
+}
+
+.material-detail-meta .ant-tag {
+    margin: 0;
+    border-radius: 5px;
+}
+
+.material-detail-meta>span+span:not(.ant-tag) {
+    border-left: 1px solid #e1e6ee;
+    padding-left: 12px;
+}
+
+.material-detail-intro {
+    margin: 12px 0 0;
+    line-height: 1.8;
+    color: #667085;
+    display: -webkit-box;
+    line-clamp: 2;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+
+.material-detail-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.material-detail-header>.material-detail-tags:not(:empty) {
+    margin-top: 14px;
+}
+
+.material-detail-tags .ant-tag {
+    margin: 0;
+    padding: 2px 9px;
+    border: 0;
+    border-radius: 5px;
+    color: #346aca;
+    background: #edf3ff;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.material-detail-version {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+    color: #788498;
+    font-size: 12px;
+}
+
+.material-detail-version .ant-select {
+    min-width: 150px;
+}
+
+.material-detail-nav {
+    display: flex;
+    flex-shrink: 0;
+    gap: 30px;
+    margin: 0 28px;
+    border-bottom: 1px solid #e9edf3;
+    overflow-x: auto;
+}
+
+.material-detail-nav button {
+    padding: 16px 0 13px;
+    flex-shrink: 0;
+    color: #475467;
+    background: none;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 500;
+}
+
+.material-detail-nav button.is-active {
+    color: #245bdb;
+    border-bottom-color: #245bdb;
+    font-weight: 600;
+}
+
+.material-detail-nav button:focus-visible,
+.material-image-viewport:focus-visible {
+    outline: 2px solid #245bdb;
+    outline-offset: -2px;
+}
+
+.material-detail-scroll {
+    min-height: 0;
+    flex: 1;
+    padding: 20px 28px 28px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.material-detail-scroll.is-image {
+    padding-top: 12px;
+    overflow: hidden;
+}
+
+.material-case-sections,
+.material-image-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.material-detail-section {
+    min-width: 0;
+    padding: 18px 20px;
+    border: 1px solid #e9edf5;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.material-detail-section.is-info {
+    border-color: #f5f7fb;
+    background: #f6f8fc;
+}
+
+.material-detail-section h3 {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 16px;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+.material-section-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    font-size: 20px;
+    color: #346bed;
+    background: #e8efff;
+}
+
+.material-section-icon.is-orange {
+    color: #d86434;
+    background: #fff0e8;
+}
+
+.material-section-icon.is-purple {
+    color: #8054d4;
+    background: #f1eaff;
+}
+
+.material-section-icon.is-green {
+    color: #237804;
+    background: #f1faee;
+}
+
+.material-info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 13px 24px;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.8;
+}
+
+.material-info-grid>div {
+    display: grid;
+    grid-template-columns: 118px minmax(0, 1fr);
+    gap: 10px;
+}
+
+.material-info-grid dt {
+    color: #8390a3;
+}
+
+.material-info-grid dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.material-info-grid .is-wide {
+    grid-column: 1 / -1;
+}
+
+.material-info-grid.is-compact {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+}
+
+.material-info-grid.is-compact>div {
+    grid-template-columns: 106px minmax(0, 1fr);
+    gap: 8px;
+}
+
+.material-detail-section .material-text {
+    margin: 0;
+}
+
+.material-original {
+    padding: 16px;
+    background: #fafbfd;
+    border-radius: 6px;
+}
+
+.material-provenance {
+    margin: 14px 0 0;
+    font-size: 12px;
+    color: #8390a3;
+    overflow-wrap: anywhere;
+}
+
+.material-image-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 240px;
+    align-items: stretch;
+    gap: 16px;
+    height: 100%;
+    min-height: 0;
+}
+
+.material-detail-section.is-image {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    padding: 12px 12px 0;
+}
+
+.material-image-sidebar .material-detail-section {
+    padding: 18px 16px;
+}
+
+.material-image-sidebar .is-summary {
+    background: #fafbfd;
+}
+
+.material-image-sidebar {
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.material-image-viewer {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+}
+
+.material-image-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.material-image-toolbar h3 {
+    margin: 0;
+}
+
+.material-image-toolbar .ant-btn {
+    height: 30px;
+    font-size: 12px;
+    border-radius: 5px;
+}
+
+.material-image-viewport {
+    position: relative;
+    min-height: 420px;
+    flex: 1;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 1px solid #edf0f5;
+    border-radius: 6px;
+    background: #f6f8fb;
+}
+
+.material-image-canvas {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100%;
+    box-sizing: border-box;
+    padding: 20px;
+}
+
+.material-image-canvas .ant-image {
+    flex-shrink: 0;
+    line-height: 0;
+    box-shadow: 0 2px 10px #243b5314;
+}
+
+.material-image-canvas .ant-image-img {
+    max-width: none;
+    height: auto;
+}
+
+.material-image-viewport>.ant-alert {
+    margin: 20px;
+}
+
+.material-image-viewport>.ant-empty {
+    margin: 90px 20px;
+}
+
+.material-image-loading {
+    position: absolute;
+    z-index: 1;
+    inset: 30px 0 auto;
+}
+
+.material-image-loading .ant-spin-nested-loading>div,
+.material-detail-loading .ant-spin-nested-loading>div {
+    min-height: 80px;
+}
+
+.material-detail-loading {
+    padding-top: 60px;
+}
+
+.material-image-caption {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    padding: 8px 0;
+    color: #8a96a8;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.material-edit-actions {
+    display: flex;
+    gap: 12px;
+    position: sticky;
+    bottom: -28px;
+    padding: 16px 0;
+    background: #fff;
+    border-top: 1px solid #edf0f5;
+}
+
+@media (max-width: 900px) {
+    .material-detail-scroll.is-image {
+        overflow-y: auto;
+    }
+
+    .material-image-layout {
+        grid-template-columns: minmax(0, 1fr);
+        height: auto;
+    }
+
+    .material-image-viewport {
+        height: min(62vh, 620px);
+    }
+
+    .material-info-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+    .material-detail-header {
+        padding: 18px 16px 12px;
+    }
+
+    .material-detail-header.is-compact {
+        padding: 12px 16px 10px;
+    }
+
+    .material-detail-title-row {
+        align-items: flex-start;
+    }
+
+    .material-detail-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .material-detail-header.is-compact h3.ant-typography {
+        white-space: normal;
+    }
+
+    .material-detail-header h3.ant-typography {
+        font-size: 21px;
+    }
+
+    .material-detail-nav {
+        margin: 0 16px;
+        gap: 24px;
+    }
+
+    .material-detail-scroll {
+        padding: 16px;
+    }
+
+    .material-detail-section {
+        padding: 16px;
+    }
+
+    .material-image-toolbar {
+        align-items: flex-start;
+    }
+
+    .material-edit-actions {
+        bottom: -16px;
+    }
+}
+
+/* 仅在显示时为透明图片铺白底，保留原文件；预览通过 Portal 挂载，使用专属根类限定范围。 */
+.material-thumbnail img,
+.material-image-canvas img,
+.material-image-preview .ant-image-preview-img {
+    background-color: #fff;
+}
+
+@media (max-width: 1200px) {
+    .materials-layout {
+        grid-template-columns: 210px minmax(0, 1fr);
+        gap: 16px;
+    }
+
+    .materials-header {
+        flex-wrap: wrap;
+    }
+
+    .material-card .ant-card-body {
+        padding: 16px;
+    }
+
+    .material-thumbnail {
+        flex-basis: 80px;
+        width: 80px;
+    }
+}
+
+@media (max-width: 950px) {
+    .materials-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .materials-toolbar {
+        flex-wrap: wrap;
+        padding-bottom: 10px;
+    }
+}
+
+@media (max-width: 640px) {
+    .materials-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .materials-filters {
+        position: static;
+    }
+
+    .materials-search {
+        width: 100%;
+    }
+
+    .material-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .materials-batch {
+        flex-wrap: wrap;
+    }
+}

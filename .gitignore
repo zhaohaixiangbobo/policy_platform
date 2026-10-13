@@ -12,3 +12,10 @@ var/
 htmlcov/
 *.pyc
 *.log
+# 授权字体仅由宿主目录提供，禁止提交二进制字体。
+*.ttf
+*.TTF
+*.ttc
+*.TTC
+*.otf
+*.OTF

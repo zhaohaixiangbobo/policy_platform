@@ -1,0 +1,35 @@
+# 文件说明：P4运行配置；连接池快照、资源上限和有界失败重启，显式叠加字体配置使用。
+services:
+  api:
+    environment:
+      PLATFORM_POOL_METRICS_FILE: /logs/db-pools/api.json
+    restart: 'on-failure:3'
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 256
+  ingestion-worker:
+    environment:
+      PLATFORM_POOL_METRICS_FILE: /logs/db-pools/ingestion-worker.json
+    restart: 'on-failure:3'
+    mem_limit: 4g
+    cpus: 4
+    pids_limit: 512
+  learning-worker:
+    environment:
+      PLATFORM_POOL_METRICS_FILE: /logs/db-pools/learning-worker.json
+    restart: 'on-failure:3'
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 256
+  postgres:
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 256
+  qdrant:
+    mem_limit: 4g
+    cpus: 4
+    pids_limit: 512
+  web:
+    mem_limit: 256m
+    cpus: 1
+    pids_limit: 128

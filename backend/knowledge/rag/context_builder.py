@@ -15,6 +15,7 @@ from .config import ContextBuilderConfig
 from .models import ContextBundle, EvidenceGroup, EvidenceRecord, OmittedEvidence
 from .token_budget import ConservativeTokenEstimator, TokenBudget
 from ..telemetry import timed
+from ..indexing.config import IndexConfig
 
 
 class ContextDatabase(Protocol):
@@ -46,12 +47,12 @@ class ContextBuilder:
         *,
         config: ContextBuilderConfig | None = None,
         estimator: TokenEstimator | None = None,
-        profile_name: str = "policy_platform_dense",
+        profile_name: str | None = None,
     ) -> None:
         self.database = database
         self.config = config or ContextBuilderConfig()
         self.estimator = estimator or ConservativeTokenEstimator()
-        self.profile_name = profile_name
+        self.profile_name = profile_name or IndexConfig.from_environment().profile_name
         if self.estimator.version != self.config.token_estimator_version:
             raise ValueError("Token估算器实现与Context配置版本不一致")
 

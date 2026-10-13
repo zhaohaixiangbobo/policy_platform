@@ -23,6 +23,10 @@ class GeneratorError(RuntimeError):
 class GeneratorTransportError(GeneratorError):
     """网络或可重试HTTP错误在有限尝试后仍失败。"""
 
+    def __init__(self, message: str, *, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+
 
 class GeneratorContractError(GeneratorError):
     """服务返回结构、模型或thinking行为不符合冻结契约。"""
@@ -138,7 +142,8 @@ class OpenAIGeneratorClient:
                 )
                 if response.status_code == 429 or response.status_code >= 500:
                     raise GeneratorTransportError(
-                        f"Generator HTTP {response.status_code}: {response.text[:300]}"
+                        f"Generator HTTP {response.status_code}: {response.text[:300]}",
+                        status_code=response.status_code,
                     )
                 if response.status_code < 200 or response.status_code >= 300:
                     raise GeneratorContractError(

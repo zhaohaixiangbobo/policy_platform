@@ -1,0 +1,3 @@
+# 文件说明：容器启动脚本固定LF，避免Windows检出导致sh解析失败。
+deploy/fonts/*.sh text eol=lf
+deploy/*.sh text eol=lf

@@ -1,7 +1,8 @@
 /**
  * 文件说明：集中维护服务端会话身份，供登录页、管理路由和用户菜单共享。
  */
-import { Spin } from 'antd';
+import { Spin, Result } from 'antd';
+import { portalEnabled } from '../portal/config';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { PropsWithChildren } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
@@ -34,6 +35,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    // 只响应后端确认的401；网络异常或403不注销本地身份。
+    const expired = () => setUser(null);
+    window.addEventListener('platform-session-expired', expired);
+    return () => window.removeEventListener('platform-session-expired', expired);
+  }, []);
 
   const value = useMemo<AuthState>(() => ({
     user,
@@ -63,8 +70,8 @@ export function RequireAdmin() {
   const auth = useAuth();
   const location = useLocation();
   if (auth.loading) return <div className="route-loading"><Spin size="large" /></div>;
-  if (!auth.user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
-  if (auth.user.must_change_password) return <Navigate to="/change-password" replace />;
+  if (!auth.user) return <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }} />;
+  if (auth.user.must_change_password) return <Navigate to="/change-password" replace state={{ from: location.pathname + location.search + location.hash }} />;
   if (!auth.user.permissions.includes('admin.access')) return <Navigate to="/" replace />;
   return <Outlet />;
 }
@@ -73,7 +80,14 @@ export function RequireAuthenticated() {
   const auth = useAuth();
   const location = useLocation();
   if (auth.loading) return <div className="route-loading"><Spin size="large" /></div>;
-  if (!auth.user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
-  if (auth.user.must_change_password && location.pathname !== '/change-password') return <Navigate to="/change-password" replace />;
+  if (!auth.user) return <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }} />;
+  if (auth.user.must_change_password && location.pathname !== '/change-password') return <Navigate to="/change-password" replace state={{ from: location.pathname + location.search + location.hash }} />;
   return <Outlet />;
+}
+
+export function RequirePolicy() {
+  const auth = useAuth();
+  if (portalEnabled && auth.user && !auth.user.must_change_password && !auth.user.permissions.includes('knowledge.document.read'))
+    return <Result status="403" title="无制度模块访问权限" subTitle="请联系管理员确认现有账号权限" extra={<a href="/portal">返回工作台</a>} />;
+  return <RequireAuthenticated />;
 }

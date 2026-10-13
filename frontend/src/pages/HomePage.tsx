@@ -85,7 +85,7 @@ export function HomePage() {
           <span className="home-assistant-mark" aria-hidden="true">
             <UiIcon icon={FileProtectOutlined} />
           </span>
-          <Typography.Title id="home-title" level={1}>制度智能助手</Typography.Title>
+          <Typography.Title id="home-title" level={1}>制度管理模块</Typography.Title>
           <Typography.Paragraph className="home-subtitle">查制度 · 问条款 · 找依据</Typography.Paragraph>
 
           <div className="home-question-composer">
@@ -208,7 +208,7 @@ export function HomePage() {
         </article>
       </section>
 
-      <footer className="home-footer">© 2026 制度知识智能服务平台</footer>
+      <footer className="home-footer">© 2026 制度管理模块</footer>
     </div>
   );
 }

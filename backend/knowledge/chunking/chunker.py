@@ -7,6 +7,10 @@ Embedding、Qdrant、召回或重排逻辑。
 
 from __future__ import annotations
 
+from sqlalchemy import text as sql_text, select, update, insert, bindparam
+from knowledge.storage.schema import metadata as knowledge_metadata
+
+
 import hashlib
 import json
 import re
@@ -86,8 +90,8 @@ class ChunkerConfig:
 class PolicyChunker:
     """基于已审核 Node Tree 生成可审计 Chunk。"""
 
-    def __init__(self, database_path: Path, config: ChunkerConfig | None = None) -> None:
-        self.db = ParserDatabase(database_path)
+    def __init__(self, database_url: str, config: ChunkerConfig | None = None) -> None:
+        self.db = ParserDatabase(database_url)
         self.config = config or ChunkerConfig()
         self.config.validate()
 
@@ -101,15 +105,11 @@ class PolicyChunker:
         self.close()
 
     def run_all_active(self, *, activate: bool = False) -> list[dict[str, Any]]:
-        rows = self.db.connection.execute(
-            "SELECT id FROM policy_document WHERE active_parse_run_id IS NOT NULL ORDER BY id"
-        ).fetchall()
+        rows = self.db.repository.run(sql_text('SELECT id FROM policy_document WHERE active_parse_run_id IS NOT NULL ORDER BY id')).mappings().fetchall()
         return [self.run_document(int(row["id"]), activate=activate) for row in rows]
 
     def run_document(self, document_id: int, *, activate: bool = False) -> dict[str, Any]:
-        row = self.db.connection.execute(
-            "SELECT active_parse_run_id FROM policy_document WHERE id=?", (document_id,)
-        ).fetchone()
+        row = self.db.repository.run(sql_text('SELECT active_parse_run_id FROM policy_document WHERE id=:p0'), {'p0': document_id}).mappings().fetchone()
         if row is None:
             raise ValueError(f"Document 不存在：{document_id}")
         if row["active_parse_run_id"] is None:
@@ -139,47 +139,25 @@ class PolicyChunker:
         source_scope = "active" if is_active else "experimental"
         config_json = self.config.canonical_json()
         config_hash = self.config.config_hash()
-        existing = self.db.connection.execute(
-            """
+        existing = self.db.repository.run(sql_text("""
             SELECT id FROM chunk_run
-            WHERE parse_run_id=? AND chunker_version=? AND config_hash=?
-            """,
-            (parse_run_id, CHUNKER_VERSION, config_hash),
-        ).fetchone()
+            WHERE parse_run_id=:p0 AND chunker_version=:p1 AND config_hash=:p2
+            """), {'p0': parse_run_id, 'p1': CHUNKER_VERSION, 'p2': config_hash}).mappings().fetchone()
         if existing:
             run_id = int(existing["id"])
             return self.run_summary(run_id)
 
         started = time.perf_counter()
         now = utc_now()
-        cursor = self.db.connection.execute(
-            """
+        cursor = self.db.repository.run(sql_text("""
             INSERT INTO chunk_run (
                 document_id, parse_run_id, chunker_version, strategy,
                 config_json, config_hash, tokenizer_name, tokenizer_version,
                 status, review_status, source_scope, started_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', 'pending', ?, ?, ?)
-            """,
-            (
-                int(context["document_id"]),
-                parse_run_id,
-                CHUNKER_VERSION,
-                self.config.strategy,
-                config_json,
-                config_hash,
-                self.config.tokenizer_name,
-                self.config.tokenizer_version,
-                source_scope,
-                now,
-                now,
-            ),
-        )
-        chunk_run_id = int(cursor.lastrowid)
-        self.db.connection.execute(
-            "UPDATE policy_document SET latest_chunk_run_id=?, updated_at=? WHERE id=?",
-            (chunk_run_id, utc_now(), int(context["document_id"])),
-        )
-        self.db.connection.commit()
+            ) VALUES (:p0, :p1, :p2, :p3, :p4, :p5, :p6, :p7, 'running', 'pending', :p8, :p9, :p10) RETURNING id"""), {'p0': int(context["document_id"]), 'p1': parse_run_id, 'p2': CHUNKER_VERSION, 'p3': self.config.strategy, 'p4': config_json, 'p5': config_hash, 'p6': self.config.tokenizer_name, 'p7': self.config.tokenizer_version, 'p8': source_scope, 'p9': now, 'p10': now})
+        chunk_run_id = int(cursor.scalar_one())
+        self.db.repository.run(sql_text('UPDATE policy_document SET latest_chunk_run_id=:p0, updated_at=:p1 WHERE id=:p2'), {'p0': chunk_run_id, 'p1': utc_now(), 'p2': int(context["document_id"])})
+        self.db.repository.save()
 
         try:
             nodes = self._load_nodes(parse_run_id)
@@ -231,25 +209,21 @@ class PolicyChunker:
         return self.run_summary(chunk_run_id)
 
     def _source_context(self, parse_run_id: int) -> dict[str, Any]:
-        row = self.db.connection.execute(
-            """
+        row = self.db.repository.run(sql_text("""
             SELECT pr.id AS parse_run_id, pr.document_id, pr.status AS parse_status,
                    pr.review_status AS parse_review_status,
                    pd.title, pd.file_name, pd.issuing_org, pd.document_code,
                    pd.active_parse_run_id
             FROM parse_run pr
             JOIN policy_document pd ON pd.id=pr.document_id
-            WHERE pr.id=?
-            """,
-            (parse_run_id,),
-        ).fetchone()
+            WHERE pr.id=:p0
+            """), {'p0': parse_run_id}).mappings().fetchone()
         if row is None:
             raise ValueError(f"ParseRun 不存在：{parse_run_id}")
         return dict(row)
 
     def _load_nodes(self, parse_run_id: int) -> list[dict[str, Any]]:
-        rows = self.db.connection.execute(
-            """
+        rows = self.db.repository.run(sql_text("""
             SELECT pn.*,
                    (SELECT sb.properties_json
                     FROM node_source_span nss
@@ -257,11 +231,9 @@ class PolicyChunker:
                     WHERE nss.node_id=pn.id
                     ORDER BY nss.id LIMIT 1) AS source_properties_json
             FROM policy_node pn
-            WHERE pn.parse_run_id=?
+            WHERE pn.parse_run_id=:p0
             ORDER BY pn.order_no, pn.id
-            """,
-            (parse_run_id,),
-        ).fetchall()
+            """), {'p0': parse_run_id}).mappings().fetchall()
         return [dict(row) for row in rows]
 
     def _eligible_nodes(
@@ -929,8 +901,7 @@ class PolicyChunker:
             for index, draft in enumerate(drafts, start=1):
                 raw_text = draft["raw_text"]
                 retrieval_text = draft["retrieval_text"]
-                cursor = self.db.connection.execute(
-                    """
+                cursor = self.db.repository.run(sql_text("""
                     INSERT INTO policy_chunk (
                         chunk_run_id, chunk_key, primary_node_id, chunk_type,
                         chunk_role, chunk_index, path_text, title_text, prefix_text,
@@ -938,62 +909,19 @@ class PolicyChunker:
                         token_count, page_start, page_end, is_retrievable,
                         raw_text_hash, retrieval_text_hash, template_version,
                         review_status, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
-                    """,
-                    (
-                        chunk_run_id,
-                        draft["chunk_key"],
-                        draft["primary_node_id"],
-                        draft["chunk_type"],
-                        draft["chunk_role"],
-                        index,
-                        draft["path_text"],
-                        draft["title_text"],
-                        draft["prefix_text"],
-                        raw_text,
-                        retrieval_text,
-                        len(raw_text),
-                        len(retrieval_text),
-                        draft["page_start"],
-                        draft["page_end"],
-                        draft["is_retrievable"],
-                        _sha256(raw_text),
-                        _sha256(retrieval_text),
-                        self.config.retrieval_template_version,
-                        now,
-                    ),
-                )
-                chunk_id = int(cursor.lastrowid)
+                    ) VALUES (:p0, :p1, :p2, :p3, :p4, :p5, :p6, :p7, :p8, :p9, :p10, :p11, :p12, NULL, :p13, :p14, :p15, :p16, :p17, :p18, 'confirmed', :p19) RETURNING id"""), {'p0': chunk_run_id, 'p1': draft["chunk_key"], 'p2': draft["primary_node_id"], 'p3': draft["chunk_type"], 'p4': draft["chunk_role"], 'p5': index, 'p6': draft["path_text"], 'p7': draft["title_text"], 'p8': draft["prefix_text"], 'p9': raw_text, 'p10': retrieval_text, 'p11': len(raw_text), 'p12': len(retrieval_text), 'p13': draft["page_start"], 'p14': draft["page_end"], 'p15': draft["is_retrievable"], 'p16': _sha256(raw_text), 'p17': _sha256(retrieval_text), 'p18': self.config.retrieval_template_version, 'p19': now})
+                chunk_id = int(cursor.scalar_one())
                 chunk_ids[draft["chunk_key"]] = chunk_id
                 for source in draft["sources"]:
-                    self.db.connection.execute(
-                        """
+                    self.db.repository.run(sql_text("""
                         INSERT INTO chunk_source_node (
                             chunk_id, node_id, source_order, contribution_role,
                             node_char_start, node_char_end, chunk_char_start,
                             chunk_char_end, mapping_type, source_text_hash, is_primary
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            chunk_id,
-                            source["node_id"],
-                            source["source_order"],
-                            source["contribution_role"],
-                            source["node_char_start"],
-                            source["node_char_end"],
-                            source["chunk_char_start"],
-                            source["chunk_char_end"],
-                            source["mapping_type"],
-                            source["source_text_hash"],
-                            source["is_primary"],
-                        ),
-                    )
+                        ) VALUES (:p0, :p1, :p2, :p3, :p4, :p5, :p6, :p7, :p8, :p9, :p10) RETURNING id"""), {'p0': chunk_id, 'p1': source["node_id"], 'p2': source["source_order"], 'p3': source["contribution_role"], 'p4': source["node_char_start"], 'p5': source["node_char_end"], 'p6': source["chunk_char_start"], 'p7': source["chunk_char_end"], 'p8': source["mapping_type"], 'p9': source["source_text_hash"], 'p10': source["is_primary"]})
             for draft in drafts:
                 if draft["parent_key"]:
-                    self.db.connection.execute(
-                        "UPDATE policy_chunk SET parent_chunk_id=? WHERE id=?",
-                        (chunk_ids[draft["parent_key"]], chunk_ids[draft["chunk_key"]]),
-                    )
+                    self.db.repository.run(sql_text('UPDATE policy_chunk SET parent_chunk_id=:p0 WHERE id=:p1'), {'p0': chunk_ids[draft["parent_key"]], 'p1': chunk_ids[draft["chunk_key"]]})
         return chunk_ids
 
     def _validate_run(
@@ -1005,14 +933,11 @@ class PolicyChunker:
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         chunks = [
             dict(row)
-            for row in self.db.connection.execute(
-                "SELECT * FROM policy_chunk WHERE chunk_run_id=? ORDER BY chunk_index", (chunk_run_id,)
-            )
+            for row in self.db.repository.run(sql_text('SELECT * FROM policy_chunk WHERE chunk_run_id=:p0 ORDER BY chunk_index'), {'p0': chunk_run_id}).mappings()
         ]
         source_rows = [
             dict(row)
-            for row in self.db.connection.execute(
-                """
+            for row in self.db.repository.run(sql_text("""
                 SELECT csn.*, pc.chunk_key, pc.chunk_run_id, pc.raw_text AS chunk_raw_text,
                        pc.prefix_text AS chunk_prefix_text, pc.is_retrievable,
                        pn.raw_text AS node_raw_text,
@@ -1021,11 +946,9 @@ class PolicyChunker:
                 FROM chunk_source_node csn
                 JOIN policy_chunk pc ON pc.id=csn.chunk_id
                 JOIN policy_node pn ON pn.id=csn.node_id
-                WHERE pc.chunk_run_id=?
+                WHERE pc.chunk_run_id=:p0
                 ORDER BY csn.chunk_id, csn.source_order, csn.id
-                """,
-                (chunk_run_id,),
-            )
+                """), {'p0': chunk_run_id}).mappings()
         ]
         sources_by_chunk: dict[int, list[dict[str, Any]]] = defaultdict(list)
         body_intervals: dict[int, list[tuple[int, int]]] = defaultdict(list)
@@ -1346,67 +1269,41 @@ class PolicyChunker:
                 details = dict(issue.get("details") or {})
                 if issue.get("chunk_key"):
                     details.setdefault("chunk_key", issue["chunk_key"])
-                self.db.connection.execute(
-                    """
+                self.db.repository.run(sql_text("""
                     INSERT INTO chunk_validation_issue (
                         chunk_run_id, chunk_id, node_id, stage, issue_code,
                         severity, message, details_json, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        chunk_run_id,
-                        chunk_ids.get(issue.get("chunk_key")),
-                        issue.get("node_id"),
-                        issue["stage"],
-                        issue["issue_code"],
-                        issue["severity"],
-                        issue["message"],
-                        json.dumps(details, ensure_ascii=False, sort_keys=True),
-                        now,
-                    ),
-                )
+                    ) VALUES (:p0, :p1, :p2, :p3, :p4, :p5, :p6, :p7, :p8) RETURNING id"""), {'p0': chunk_run_id, 'p1': chunk_ids.get(issue.get("chunk_key")), 'p2': issue.get("node_id"), 'p3': issue["stage"], 'p4': issue["issue_code"], 'p5': issue["severity"], 'p6': issue["message"], 'p7': json.dumps(details, ensure_ascii=False, sort_keys=True), 'p8': now})
 
     def _issue_counts(self, chunk_run_id: int) -> dict[str, int]:
         result = {"error": 0, "review": 0, "warning": 0}
-        for row in self.db.connection.execute(
-            "SELECT severity, COUNT(*) AS n FROM chunk_validation_issue WHERE chunk_run_id=? GROUP BY severity",
-            (chunk_run_id,),
-        ):
+        for row in self.db.repository.run(sql_text('SELECT severity, COUNT(*) AS n FROM chunk_validation_issue WHERE chunk_run_id=:p0 GROUP BY severity'), {'p0': chunk_run_id}).mappings():
             result[str(row["severity"])] = int(row["n"])
         return result
 
     def _update_chunk_run(self, chunk_run_id: int, **fields: Any) -> None:
         if not fields:
             return
-        columns = ", ".join(f"{name}=?" for name in fields)
-        self.db.connection.execute(
-            f"UPDATE chunk_run SET {columns} WHERE id=?",
-            (*fields.values(), chunk_run_id),
-        )
-        self.db.connection.commit()
+        table = knowledge_metadata.tables["chunk_run"]
+        self.db.repository.run(update(table).where(table.c.id == chunk_run_id).values(**fields))
+        self.db.repository.save()
 
     def activate_run_if_ready(self, chunk_run_id: int) -> bool:
         """满足正式激活条件时原子切换 active_chunk_run_id。"""
 
-        row = self.db.connection.execute(
-            """
+        row = self.db.repository.run(sql_text("""
             SELECT cr.*, pd.active_parse_run_id
             FROM chunk_run cr
             JOIN policy_document pd ON pd.id=cr.document_id
-            WHERE cr.id=?
-            """,
-            (chunk_run_id,),
-        ).fetchone()
+            WHERE cr.id=:p0
+            """), {'p0': chunk_run_id}).mappings().fetchone()
         if row is None:
             raise ValueError(f"ChunkRun 不存在：{chunk_run_id}")
         unresolved = int(
-            self.db.connection.execute(
-                """
+            self.db.repository.run(sql_text("""
                 SELECT COUNT(*) FROM chunk_validation_issue
-                WHERE chunk_run_id=? AND resolved=0 AND severity IN ('error','review')
-                """,
-                (chunk_run_id,),
-            ).fetchone()[0]
+                WHERE chunk_run_id=:p0 AND resolved=0 AND severity IN ('error','review')
+                """), {'p0': chunk_run_id}).scalar_one()
         )
         ready = (
             row["source_scope"] == "active"
@@ -1420,21 +1317,14 @@ class PolicyChunker:
         if not ready:
             return False
         with self.db.transaction():
-            current = self.db.connection.execute(
-                "SELECT active_parse_run_id FROM policy_document WHERE id=?",
-                (int(row["document_id"]),),
-            ).fetchone()
+            current = self.db.repository.run(sql_text('SELECT active_parse_run_id FROM policy_document WHERE id=:p0'), {'p0': int(row["document_id"])}).mappings().fetchone()
             if current is None or int(current["active_parse_run_id"]) != int(row["parse_run_id"]):
                 raise ValueError("激活过程中 active_parse_run_id 已变化，请重新生成 Chunk")
-            self.db.connection.execute(
-                "UPDATE policy_document SET active_chunk_run_id=?, updated_at=? WHERE id=?",
-                (chunk_run_id, utc_now(), int(row["document_id"])),
-            )
+            self.db.repository.run(sql_text('UPDATE policy_document SET active_chunk_run_id=:p0, updated_at=:p1 WHERE id=:p2'), {'p0': chunk_run_id, 'p1': utc_now(), 'p2': int(row["document_id"])})
         return True
 
     def run_summary(self, chunk_run_id: int) -> dict[str, Any]:
-        row = self.db.connection.execute(
-            """
+        row = self.db.repository.run(sql_text("""
             SELECT cr.*, pd.file_name, pd.title,
                    pd.latest_chunk_run_id, pd.active_chunk_run_id,
                    (SELECT COUNT(*) FROM chunk_validation_issue cvi
@@ -1445,10 +1335,8 @@ class PolicyChunker:
                     WHERE cvi.chunk_run_id=cr.id AND cvi.severity='warning') AS warning_count
             FROM chunk_run cr
             JOIN policy_document pd ON pd.id=cr.document_id
-            WHERE cr.id=?
-            """,
-            (chunk_run_id,),
-        ).fetchone()
+            WHERE cr.id=:p0
+            """), {'p0': chunk_run_id}).mappings().fetchone()
         if row is None:
             raise ValueError(f"ChunkRun 不存在：{chunk_run_id}")
         return dict(row)

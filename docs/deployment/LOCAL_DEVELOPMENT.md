@@ -1,5 +1,24 @@
 # Windows 本机开发运行说明
 
+## PostgreSQL 迁移期入口（2026-10-10）
+
+2026-10-11版本更新：Platform head为0013_worker_leases，Knowledge head为k0003_worker_operation；P3恢复命令和边界见[P3记录](../testing/POSTGRES_P3_VERIFICATION_2026-10-11.md)。下文P2版本保留为阶段记录，现行启动方式不变。更新Worker代码后须按正常流程停止旧Worker、等待当前阶段结束再启动，不能强杀正在发布的进程。
+
+P2已完成：PG17.11监听127.0.0.1:55432，Platform head为0012_supporting_materials，Knowledge head为k0002_document_series_index。
+当前代码正式运行只支持PG。迁移预检、独立初始化及最小测试以[P2记录](../testing/POSTGRES_P2_VERIFICATION_2026-10-10.md)为准；API不自动迁移或初始化角色。
+新配置在`var/postgres-dev/platform.env`，旧.env未替换；分别在终端运行：
+
+```powershell
+& 'D:\2-code\policy-platform\scripts\dev-postgres.ps1' api
+& 'D:\2-code\policy-platform\scripts\dev-postgres.ps1' worker
+& 'D:\2-code\policy-platform\scripts\dev-postgres.ps1' learning-worker
+```
+
+PowerShell向Python管道传中文时设置`$OutputEncoding=[System.Text.UTF8Encoding]::new($false)`；`$env:PYTHONIOENCODING='utf-8'`控制Python标准输入输出编码，两者用途不同。
+**下文旧版本迁移/启动段落为历史参考**：直接alembic upgrade、默认旧.env和全量SQLite测试命令不用于PG。当前迁移必须使用带目标身份及指纹检查的两个migrate-*-pg.py入口；启动前独立初始化角色/provider及管理员，不依赖重启补数据。P3完整外部服务闭环尚待验收。
+
+门户入口：`/login`（平台）、`/portal/login`（原制度）、`/portal`（工作台）。前端环境模板在 `frontend/.env.example`；在 `frontend/.env.local` 设置 `VITE_PORTAL_ENABLED=false` 并重启前端，可恢复原制度登录入口。生产需重新构建，详见 [门户与回滚说明](../PLATFORM_PORTAL.md)。
+
 > 文件说明：说明统一知识模块迁移后的本机启动、配置和最小验证方法。
 
 ## 服务地址
@@ -22,6 +41,10 @@ POLICY_LIBREOFFICE_PATH=C:\Program Files\LibreOffice\program\soffice.exe
 ```
 
 ## 启动
+
+### 配套资料库（2026-09-25）
+
+当前Platform head为 `0012_supporting_materials`，本机已应用。其他环境先执行 `alembic upgrade head`，重启API加载权限基线，刷新前端会话后打开 `/materials`。无需Worker或模型服务。资料图片默认保存在var/materials，可通过PLATFORM_MATERIALS_ROOT覆盖；容器必须持久化该目录。后文0011为学习模块原始升级记录，当前版本以本节及总台账为准。
 
 ### 学习成效检测（可选）
 

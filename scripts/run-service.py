@@ -15,7 +15,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("service", choices=["api", "worker", "learning-worker", "workers", "migrate"])
     args, remaining = parser.parse_known_args()
-    load_dotenv(ROOT / ".env", override=False)
+    load_dotenv(os.getenv("PLATFORM_ENV_FILE", str(ROOT / ".env")), override=False)
     os.chdir(ROOT / "backend")
     sys.path.insert(0, str(ROOT / "backend"))
     # exec替换自身，容器PID 1直接接收停止信号；不自动安装依赖。
@@ -29,7 +29,8 @@ def main() -> int:
     elif args.service == "workers":
         command = [str(ROOT / "scripts" / "supervise-workers.py")]
     else:
-        command = ["-m", "alembic", "-c", str(ROOT / "backend/alembic.ini"), "upgrade", "head"]
+        # 迁移默认预览，使用--execute-plan显式批准；Knowledge使用独立入口。
+        command = [str(ROOT / "scripts/migrate-platform-pg.py")]
     execute(command + remaining)
     return 0
 

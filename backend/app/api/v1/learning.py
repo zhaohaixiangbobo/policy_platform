@@ -12,6 +12,7 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from app.api.dependencies import require_permission
 from app.application.learning_service import LearningService, public_current
+from app.application.material_service import MaterialService
 from app.config import get_settings
 from app.infrastructure.db.session import get_db_session
 from knowledge.learning_source import freeze_learning_source
@@ -19,10 +20,11 @@ from knowledge.learning_source import freeze_learning_source
 
 def enabled():
     if not get_settings().learning_assessment_enabled:
-        raise HTTPException(404, "学习成效检测未启用")
+        raise HTTPException(404, "学习检测未启用")
 
 
-router = APIRouter(prefix="/learning-assessments", tags=["learning-assessments"], dependencies=[Depends(enabled)])
+router = APIRouter(prefix="/learning-assessments",
+                   tags=["learning-assessments"], dependencies=[Depends(enabled)])
 
 
 class CreateAssessment(BaseModel):
@@ -46,7 +48,8 @@ class CreateAssessment(BaseModel):
 
 class Answers(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    answers: dict[str, Annotated[list[StrictInt], Field(max_length=5)]] = Field(max_length=15)
+    answers: dict[str, Annotated[list[StrictInt],
+                                 Field(max_length=5)]] = Field(max_length=15)
 
 
 def access(request, principal, document_id):
@@ -61,14 +64,16 @@ def checked_slot(request, principal, session):
         for value in (row.current_json, row.pending_json):
             if value:
                 data = json.loads(value)
-                access(request, principal, data.get("source", data)["document_id"])
+                access(request, principal, data.get(
+                    "source", data)["document_id"])
         session.commit()
     return service, row
 
 
 def conflict(session, exc):
     session.rollback()
-    raise HTTPException(409, "检测已发生变化，请刷新后重试" if isinstance(exc, (IntegrityError, StaleDataError)) else str(exc)) from exc
+    raise HTTPException(409, "检测已发生变化，请刷新后重试" if isinstance(
+        exc, (IntegrityError, StaleDataError)) else str(exc)) from exc
 
 
 @router.post("", status_code=202)
@@ -76,11 +81,14 @@ def create(body: CreateAssessment, request: Request,
            principal=Depends(require_permission("knowledge.document.read", csrf=True)), session: Session = Depends(get_db_session)):
     access(request, principal, body.document_id)
     try:
-        source = freeze_learning_source(request.app.state.knowledge_catalog, body.document_id, body.scope, body.node_ids)
-        counts = {"SINGLE": body.single, "MULTIPLE": body.multiple, "TRUE_FALSE": body.true_false}
+        source = freeze_learning_source(
+            request.app.state.knowledge_catalog, body.document_id, body.scope, body.node_ids)
+        counts = {"SINGLE": body.single, "MULTIPLE": body.multiple,
+                  "TRUE_FALSE": body.true_false}
         if sum(counts.values()) > len(source["units"]) * 2:
             raise ValueError("所选范围完整条款不足，每条最多两题，请减少题量或扩大范围")
-        row = LearningService(session, principal.user_id, get_settings()).start(source, counts, str(body.request_id))
+        row = LearningService(session, principal.user_id, get_settings()).start(
+            source, counts, str(body.request_id))
         return {"task_id": row.task_id, "status": row.task_state}
     except (ValueError, IntegrityError, StaleDataError) as exc:
         conflict(session, exc)
@@ -92,10 +100,12 @@ def current(request: Request, principal=Depends(require_permission("knowledge.do
         _, row = checked_slot(request, principal, session)
         if row is None:
             return {"task": None, "assessment": None}
-        data = public_current(json.loads(row.current_json)) if row.current_json else None
+        data = public_current(json.loads(row.current_json)
+                              ) if row.current_json else None
         if data:
             try:
-                document = request.app.state.knowledge_catalog.get_document(data["document_id"])
+                document = request.app.state.knowledge_catalog.get_document(
+                    data["document_id"])
                 data["version_changed"] = (
                     document.active_parse_run_id != data["parse_run_id"]
                     or getattr(document, "status", "现行有效") != "现行有效"
@@ -119,6 +129,38 @@ def save_answers(assessment_id: UUID, body: Answers, request: Request,
         return {"saved": True}
     except (ValueError, StaleDataError) as exc:
         conflict(session, exc)
+
+
+@router.get("/{assessment_id}/questions/{question_id}/materials")
+def question_materials(assessment_id: UUID, question_id: str, request: Request,
+                       principal=Depends(require_permission(
+                           "knowledge.document.read")),
+                       _material=Depends(require_permission("material.read")),
+                       session: Session = Depends(get_db_session)):
+    # 仅从本人未过期的已提交快照取材，不接受客户端题干、选项或任意检索文本。
+    _, row = checked_slot(request, principal, session)
+    if not row or row.current_id != str(assessment_id) or not row.current_json:
+        raise HTTPException(404, "检测已过期或不可访问")
+    data = json.loads(row.current_json)
+    if data["status"] != "SUBMITTED":
+        raise HTTPException(409, "提交检测后可查看辅助资料")
+    question = next(
+        (q for q in data["questions"] if q["question_id"] == question_id), None)
+    if not question:
+        raise HTTPException(404, "题目不存在")
+    # 快照中的短句独立匹配；不使用整份制度标题、错误选项和生成解析扩大主题。
+    import re
+    # 知识点只保留条款标题：“正文条款 769”“第三条”等编号无主题含义，还会挤占前10个匹配词名额。
+    point = re.sub(r"正文条款\s*\d+|第[0-9零〇一二三四五六七八九十百千]+[编章节条款项]",
+                   " ", question.get("knowledge_point", ""))
+    query = " ".join([point] +
+                     re.split(r"[，。；：、\n]", question.get("source_text_snapshot", "")))
+    result = MaterialService(session, principal).recommend(query)
+    by_kind = {}
+    for item in result["items"]:
+        by_kind.setdefault(item["kind"], item)
+    result["items"] = list(by_kind.values())
+    return result
 
 
 @router.post("/{assessment_id}/submit")

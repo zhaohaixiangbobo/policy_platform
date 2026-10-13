@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "modules": {
+    "meetings": { "enabled": false, "url": "", "openMode": "newTab" },
+    "discipline": { "enabled": false, "url": "", "openMode": "newTab" },
+    "inspection": { "enabled": false, "url": "", "openMode": "newTab" },
+    "supervision": { "enabled": false, "url": "", "openMode": "newTab" },
+    "documents": { "enabled": false, "url": "", "openMode": "newTab" }
+  }
+}

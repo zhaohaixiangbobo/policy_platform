@@ -1,0 +1,104 @@
+# 文件说明：P4独立空环境；明确项目名隔离卷，无默认业务数据导入或迁移。
+name: policy-platform-p4
+x-backend: &backend
+  image: policy-platform/backend:p4-local
+  pull_policy: never
+  build:
+    context: .
+    dockerfile: deploy/Dockerfile.backend
+  init: true
+  environment:
+    PLATFORM_ENV_FILE: /run/config/runtime.env
+    PLATFORM_WORKER_LOCK_DIR: /logs/worker-locks
+  volumes:
+    - {type: bind, source: ./var/compose-p4/runtime.env, target: /run/config/runtime.env, read_only: true, bind: {create_host_path: false}}
+    - knowledge_files:/data/knowledge
+    - material_files:/data/materials
+    - app_logs:/logs
+  depends_on:
+    postgres:
+      condition: service_healthy
+  stop_grace_period: 120s
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '3'
+services:
+  postgres:
+    image: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - {type: bind, source: ./var/compose-p4/init.sql, target: /docker-entrypoint-initdb.d/10-platform.sql, read_only: true, bind: {create_host_path: false}}
+      - {type: bind, source: ./var/compose-p4/postgres-password, target: /run/secrets/postgres_password, read_only: true, bind: {create_host_path: false}}
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U postgres -d postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+  qdrant:
+    image: qdrant/qdrant@sha256:057ee3a8da769fe7310dd3537b4dc7583bf87a95ce8ac43c0af5a46bc580d1fc
+    pull_policy: never
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    logging: *logging
+  api:
+    <<: *backend
+    restart: 'no'
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8020/api/v1/health/ready', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  ingestion-worker:
+    <<: *backend
+    command: [python, worker.py]
+    restart: 'no'
+  learning-worker:
+    <<: *backend
+    command: [python, learning_worker.py]
+    restart: 'no'
+  web:
+    image: policy-platform/web:p4-local
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+    ports: ['127.0.0.1:8088:8080']
+    volumes:
+      - {type: bind, source: ./deploy/nginx.conf, target: /etc/nginx/conf.d/default.conf, read_only: true, bind: {create_host_path: false}}
+      - {type: bind, source: ./deploy/portal, target: /usr/share/nginx/html/runtime, read_only: true, bind: {create_host_path: false}}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+  migrate:
+    image: policy-platform/backend:p4-local
+    pull_policy: never
+    profiles: [tools]
+    working_dir: /app
+    command: [python, scripts/migrate-platform-pg.py, --env-file, /run/config/migration.env]
+    volumes:
+      - {type: bind, source: ./var/compose-p4/migration.env, target: /run/config/migration.env, read_only: true, bind: {create_host_path: false}}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *logging
+  initialize:
+    <<: *backend
+    profiles: [tools]
+    working_dir: /app
+    command: [python, scripts/initialize-platform-pg.py, --env-file, /run/config/runtime.env]
+volumes:
+  postgres_data:
+  qdrant_data:
+  knowledge_files:
+  material_files:
+  app_logs:

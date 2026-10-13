@@ -1,0 +1,15 @@
+# 文件说明：固定Node/pnpm构建前端，仅静态文件进入Nginx运行镜像。
+ARG NODE_IMAGE=node:22.23.2-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9
+ARG NGINX_IMAGE=nginx:stable-bookworm@sha256:552e7481ca93ffccd046aa658dbbed22caefbc09c66fa7cd247cbb90b8a5c609
+FROM ${NODE_IMAGE} AS build
+WORKDIR /src
+RUN npm install --global pnpm@11.22.0
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY frontend/package.json frontend/package.json
+RUN pnpm install --frozen-lockfile
+COPY frontend frontend
+RUN pnpm build && find frontend/dist -name '*.map' -delete
+FROM ${NGINX_IMAGE}
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /src/frontend/dist /usr/share/nginx/html
+EXPOSE 8080

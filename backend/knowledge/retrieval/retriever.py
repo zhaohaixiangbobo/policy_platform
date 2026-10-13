@@ -1,7 +1,7 @@
-"""Dense Retrieval 与 SQLite 权威 Chunk 回读。
+"""Dense Retrieval与Knowledge权威Chunk回读。
 
 查询只访问 active alias；Qdrant 返回 chunk_id 和分数后，模块从当前 active IndexRun
-的来源清单批量读取 SQLite，拒绝无法回读或来自其他索引快照的 point。
+的来源清单批量读取Knowledge，拒绝无法回读或来自其他索引快照的point。
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, Sequence
 
-from ..indexing.config import EmbeddingContract
+from ..indexing.config import EmbeddingContract, IndexConfig
 from ..indexing.database import IndexDatabase
 from ..indexing.qdrant_store import SearchHit
 from ..telemetry import call, timed
@@ -53,18 +53,18 @@ class DenseRetriever:
 
     def __init__(
         self,
-        database_path: Path,
+        database_url: str,
         *,
         embedding_client: QueryEmbeddingClient,
         vector_store: SearchVectorStore,
         contract: EmbeddingContract | None = None,
-        profile_name: str = "policy_platform_dense",
+        profile_name: str | None = None,
     ) -> None:
-        self.db = IndexDatabase(database_path)
+        self.db = IndexDatabase(database_url)
         self.embedding_client = embedding_client
         self.vector_store = vector_store
         self.contract = contract or EmbeddingContract()
-        self.profile_name = profile_name
+        self.profile_name = profile_name or IndexConfig.from_environment().profile_name
 
     def close(self) -> None:
         self.db.close()
@@ -95,7 +95,7 @@ class DenseRetriever:
         actual_target = call("qdrant_alias", self.vector_store.alias_target, alias_name)
         if actual_target != str(context["collection_name"]):
             raise RuntimeError(
-                f"Qdrant alias 与 SQLite active IndexRun 不一致：{actual_target}"
+                f"Qdrant alias与Knowledge active IndexRun不一致：{actual_target}"
             )
 
         query_input = self.embedding_client.format_query(query)

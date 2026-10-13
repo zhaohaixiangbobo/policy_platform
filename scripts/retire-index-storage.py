@@ -1,42 +1,4 @@
-"""文件说明：预览或执行旧IndexRun向量存储清理，业务和证据记录全部保留。"""
-
-import argparse
-import json
-import os
-import sys
-from pathlib import Path
-
-from dotenv import load_dotenv
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "backend"))
-load_dotenv(ROOT / ".env", override=False)
-
-from app.config import get_settings
-from knowledge.indexing.maintenance import retire_collections
-from knowledge.indexing.qdrant_store import QdrantVectorStore
-from sqlalchemy.engine import make_url
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--runs", type=int, nargs="+", required=True)
-    parser.add_argument("--keep", type=int, nargs="+", required=True)
-    parser.add_argument("--execute", action="store_true", help="永久删除清单内向量collection；默认只预览")
-    args = parser.parse_args()
-    settings = get_settings()
-    url = make_url(settings.database_url)
-    if url.get_backend_name() != "sqlite" or not url.database:
-        raise ValueError("当前维护入口仅支持SQLite；MySQL迁移时须替换维护锁实现")
-    store = QdrantVectorStore(os.getenv("POLICY_QDRANT_URL", "http://127.0.0.1:6333"),
-                              api_key=os.getenv("POLICY_QDRANT_API_KEY"))
-    try:
-        result = retire_collections(settings.knowledge_database_path, Path(url.database), store,
-                                    args.runs, args.keep, execute=args.execute)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    finally:
-        store.client.close()
-
+"""文件说明：旧SQLite专用工具已归档；PG维护恢复在P3按新事务边界实施。"""
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit("此旧环境工具已归档。使用migrate-platform-pg.py / migrate-knowledge-pg.py；维护恢复待P3。")

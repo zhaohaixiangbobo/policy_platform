@@ -20,6 +20,8 @@ from app.infrastructure.db.models import (
 from knowledge.contracts import QueryResponse as RagQueryResponse
 from knowledge.service import KnowledgeService, KnowledgeServiceError
 from app.application.auth_service import Principal
+from app.application.material_search import material_intent, topic
+from app.application.material_service import MaterialService
 from app.application.conversation_context import STRATEGY_VERSION, resolve_context
 from app.application.query_scope_service import QueryScopeResolver, ResolvedQueryScope
 from app.schemas.chat import (
@@ -188,6 +190,13 @@ class ChatService:
         question = recent[1] if previous else None
         message_id = str(uuid.uuid4())
         retrieval_query, context = resolve_context(content.strip(), message_id, previous, question, resolved_scope, selected_document_ids)
+        intent = material_intent(content.strip())
+        # 仅无新主题的资料追问继承紧邻一轮，且制度选择与时间范围必须一致。
+        if intent and topic(content.strip()) in {"", "有", "还有", "相关"} and question and (
+            question.query_scope == query_scope and question.document_selection_mode == document_selection_mode
+            and json.loads(question.selected_document_ids_json) == list(selected_document_ids)
+        ):
+            retrieval_query = f"{question.retrieval_query or question.content} {content.strip()}"
         rewritten = retrieval_query != content.strip()
         user_message = ChatMessage(
             id=message_id,
@@ -207,6 +216,29 @@ class ChatService:
         chat_session.updated_at = utc_now()
         self._session.add(user_message)
         self._session.commit()
+
+        if intent:
+            # 资料结果属于Platform，不构造虚假的RAG调用或制度引用。
+            if "material.read" not in self._principal.permissions:
+                answer = "当前账号没有配套资料读取权限。"
+            elif document_selection_mode != "ALL":
+                answer = "当前已指定制度，尚未建立制度与资料的关联。请切换全部制度模式或到配套资料库查找。"
+            else:
+                found = MaterialService(self._session, self._principal, request_id).recommend(retrieval_query, kind=intent)
+                answer = "找到以下相关资料，仅供学习参考，不作为制度依据。" if found["items"] else "当前已发布配套资料中未匹配到相关资料。可补充具体行为或业务主题后重试。"
+            assistant = ChatMessage(session_id=session_id, role="assistant", content=answer,
+                query_scope=query_scope, **self._scope_fields(resolved_scope, selected_document_ids),
+                answer_status="ANSWER", reason_code="MATERIAL_SEARCH", request_id=request_id,
+                retrieval_query=retrieval_query, rewrite_used=rewritten,
+                rewrite_strategy_version=STRATEGY_VERSION,
+                conversation_context_json=json.dumps(context, ensure_ascii=False))
+            assistant.citations, assistant.conflicts = [], []
+            self._session.add(assistant)
+            self._session.add(PlatformAuditLog(request_id=request_id, actor_user_id=self._actor_user_id,
+                auth_provider="SESSION", action="material_search", object_type="chat_session",
+                object_id=session_id, status="succeeded"))
+            self._session.commit()
+            return ChatTurnResponse(user_message=message_response(user_message), assistant_message=message_response(assistant))
 
         try:
             response = await self._client.query(

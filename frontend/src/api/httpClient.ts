@@ -18,6 +18,26 @@ function createRequestId(): string {
   return `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function errorText(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim() || null;
+  if (Array.isArray(value)) return value.map(errorText).filter(Boolean).join('；') || null;
+  if (value && typeof value === 'object') {
+    const detail = value as { msg?: unknown; message?: unknown; loc?: unknown };
+    const text = typeof detail.msg === 'string' ? detail.msg : typeof detail.message === 'string' ? detail.message : null;
+    if (!text) return null;
+    const path = Array.isArray(detail.loc) ? detail.loc.filter((part) => typeof part === 'string' || typeof part === 'number').join('.') : '';
+    return path ? `${path}：${text}` : text;
+  }
+  return null;
+}
+
+/** 将FastAPI校验数组、业务错误与文本错误转换为可读消息，不展示请求原始值。 */
+export function apiErrorMessage(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return errorText(payload) ?? '平台服务请求失败';
+  const body = payload as { error?: unknown; detail?: unknown };
+  return errorText(body.error) ?? errorText(body.detail) ?? '平台服务请求失败';
+}
+
 export async function requestJson<T>(
   path: string,
   init: RequestInit = {},
@@ -36,7 +56,7 @@ export async function requestJson<T>(
     if (csrfToken) headers.set('X-CSRF-Token', decodeURIComponent(csrfToken));
   }
 
-  if (init.body && !headers.has('Content-Type')) {
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -44,13 +64,12 @@ export async function requestJson<T>(
   const responseRequestId = response.headers.get('X-Request-ID') ?? requestId;
 
   if (!response.ok) {
+    if (response.status === 401 && path !== '/api/v1/auth/login' && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('platform-session-expired'));
+    }
     let message = '平台服务请求失败';
     try {
-      const payload = (await response.json()) as {
-        detail?: string;
-        error?: { message?: string };
-      };
-      message = payload.error?.message ?? payload.detail ?? message;
+      message = apiErrorMessage(await response.json());
     } catch {
       // 非JSON错误仍使用稳定的本地提示。
     }

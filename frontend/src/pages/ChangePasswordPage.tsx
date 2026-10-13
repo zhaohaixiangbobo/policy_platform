@@ -4,7 +4,8 @@
 import { FileProtectOutlined, LockOutlined } from '@ant-design/icons';
 import { Button, Card, Form, Input, Typography, message } from 'antd';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { portalEnabled, safeReturn } from '../portal/config';
 
 import { changePassword } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
@@ -14,10 +15,11 @@ export function ChangePasswordPage() {
   const [loading, setLoading] = useState(false);
   const auth = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const submit = async (values: { current: string; next: string; confirm: string }) => {
     if (values.next !== values.confirm) { message.error('两次新密码不一致'); return; }
     setLoading(true);
-    try { await changePassword(values.current, values.next); await auth.refresh(); message.success('密码已更新'); navigate('/admin/jobs', { replace: true }); }
+    try { await changePassword(values.current, values.next); await auth.refresh(); message.success('密码已更新'); navigate(safeReturn(location.state?.from, portalEnabled ? '/portal' : '/admin/jobs'), { replace: true }); }
     catch (error) { message.error(error instanceof Error ? error.message : '密码修改失败'); }
     finally { setLoading(false); }
   };

@@ -6,6 +6,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from knowledge.storage.repository import database_url
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,8 +19,8 @@ class KnowledgePaths:
         object.__setattr__(self, "data_root", self.data_root.resolve())
 
     @property
-    def database_path(self) -> Path:
-        return self.data_root / "policy_parser.db"
+    def database_url(self) -> str:
+        return database_url()
 
     @property
     def source_documents(self) -> Path:

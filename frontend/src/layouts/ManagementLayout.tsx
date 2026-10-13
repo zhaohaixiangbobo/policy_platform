@@ -10,6 +10,8 @@ import { useAuth } from '../auth/AuthContext';
 import { UiIcon } from '../components/UiIcon';
 import { useFeatures } from '../api/learning';
 import { navigationItems, resolveSelectedKey } from './BasicLayout';
+import { PortalAccount } from '../portal/PortalAccount';
+import { portalEnabled } from '../portal/config';
 
 const { Header, Sider, Content } = Layout;
 
@@ -42,9 +44,9 @@ export function ManagementLayout() {
   const navigate = useNavigate();
   const auth = useAuth();
   const features = useFeatures();
-  const visibleNavigation = features?.learning_assessment
-    ? [...navigationItems.slice(0, 3), { key: '/learning', label: '学习成效检测' }, ...navigationItems.slice(3)]
-    : navigationItems;
+  const visibleNavigation = [...navigationItems.slice(0, 3),
+  ...(auth.user?.permissions.includes('material.read') ? [{ key: '/materials', label: '配套资料库' }] : []),
+  ...(features?.learning_assessment ? [{ key: '/learning', label: '学习检测' }] : []), ...navigationItems.slice(3)];
   const topSelectedKeys = useMemo(() => [resolveSelectedKey(location.pathname)], [location.pathname]);
   const selected = useMemo(() => {
     const match = ['/admin/jobs', '/admin/reviews', '/admin/knowledge', '/admin/relations', '/admin/processes', '/admin/users'].find((item) => location.pathname.startsWith(item));
@@ -56,7 +58,7 @@ export function ManagementLayout() {
       <Header className="management-header">
         <button className="brand-home-button management-brand" type="button" onClick={() => navigate('/')}>
           <span className="brand-mark"><UiIcon icon={FileProtectOutlined} /></span>
-          <Typography.Title level={4} className="brand-title">制度知识智能服务平台</Typography.Title>
+          <Typography.Title level={4} className="brand-title">制度管理模块</Typography.Title>
         </button>
         <Menu
           className="desktop-nav management-top-nav"
@@ -66,12 +68,12 @@ export function ManagementLayout() {
           items={visibleNavigation}
           onClick={({ key }) => navigate(key)}
         />
-        <Dropdown menu={{ items: [{ key: 'logout', icon: <UiIcon icon={LogoutOutlined} />, label: '退出登录', onClick: () => void auth.logout().then(() => navigate('/login')) }] }}>
+        {portalEnabled ? <PortalAccount /> : <Dropdown menu={{ items: [{ key: 'logout', icon: <UiIcon icon={LogoutOutlined} />, label: '退出登录', onClick: () => void auth.logout().then(() => navigate('/login')) }] }}>
           <button className="management-user" type="button">
             <Avatar size={30}>{auth.user?.display_name.slice(0, 1)}</Avatar>
             <span><strong>{auth.user?.display_name}</strong><small>{auth.user?.roles.join(' / ')}</small></span>
           </button>
-        </Dropdown>
+        </Dropdown>}
       </Header>
       <Layout>
         <Sider className="management-sider" width={216} collapsedWidth={72} collapsed={collapsed} theme="light">

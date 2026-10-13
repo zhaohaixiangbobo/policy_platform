@@ -17,6 +17,7 @@ from app.infrastructure.db.models import (
     utc_now,
 )
 from knowledge.management import KnowledgeManagementService
+from knowledge.indexing.config import IndexConfig
 
 
 EXACT_SNAPSHOT_CONTRACT = "exact_snapshot_v2"
@@ -119,6 +120,7 @@ class PublicationService:
             }
 
         request = IndexPublicationRequest(
+            alias_name=IndexConfig.from_environment().alias_name,
             status="BUILD_QUEUED",
             snapshot_contract_version=EXACT_SNAPSHOT_CONTRACT,
             base_index_run_id=baseline["index_run_id"],

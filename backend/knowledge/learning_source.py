@@ -1,26 +1,27 @@
 """文件说明：在单一只读事务中冻结已发布制度及完整条款，不使用问答TopK取材。"""
+from sqlalchemy import text as sql_text, select, update, insert, bindparam
+from knowledge.storage.schema import metadata as knowledge_metadata
 
 from knowledge.catalog import KnowledgeCatalogService
 
 
 def freeze_learning_source(catalog: KnowledgeCatalogService, document_id: int,
                            mode: str, selected_ids: list[int]) -> dict:
-    with catalog._connection() as connection:
-        connection.execute("BEGIN")
-        row = connection.execute("""
+    with catalog._connection() as connection, connection.read_snapshot():
+        row = connection.run(sql_text("""
             SELECT src.index_run_id,src.parse_run_id,m.title,m.document_code,m.status
             FROM index_profile ip JOIN index_run ir ON ir.id=ip.active_index_run_id
             JOIN index_run_source src ON src.index_run_id=ir.id
             JOIN document_metadata_revision m ON m.id=src.metadata_revision_id
-            WHERE ip.profile_name=? AND src.document_id=?
+            WHERE ip.profile_name=:p0 AND src.document_id=:p1
               AND ir.status='succeeded' AND ir.activation_status='active'
-        """, (catalog.profile_name, document_id)).fetchone()
+        """), {'p0': catalog.profile_name, 'p1': document_id}).mappings().fetchone()
         if row is None or row["status"] != "effective":
             raise ValueError("只能对已正式发布的现行有效制度出题")
-        nodes = [dict(item) for item in connection.execute("""
+        nodes = [dict(item) for item in connection.run(sql_text("""
             SELECT id,parent_id,node_type,node_number,title,COALESCE(raw_text,content,'') AS text,order_no
-            FROM policy_node WHERE document_id=? AND parse_run_id=? ORDER BY order_no,id
-        """, (document_id, row["parse_run_id"]))]
+            FROM policy_node WHERE document_id=:p0 AND parse_run_id=:p1 ORDER BY order_no,id
+        """), {'p0': document_id, 'p1': row["parse_run_id"]}).mappings()]
     by_id = {node["id"]: node for node in nodes}
     children: dict[int, list] = {}
     for node in nodes:

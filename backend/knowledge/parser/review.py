@@ -6,6 +6,10 @@
 
 from __future__ import annotations
 
+from sqlalchemy import text as sql_text, select, update, insert, bindparam
+from knowledge.storage.schema import metadata as knowledge_metadata
+
+
 import json
 from pathlib import Path
 from typing import Any
@@ -40,8 +44,8 @@ DOCUMENT_FIELD_NAMES = {
 class ReviewService:
     """提供带审计记录的 ParseRun 人工审核操作。"""
 
-    def __init__(self, database_path: Path) -> None:
-        self.db = ParserDatabase(database_path)
+    def __init__(self, database_url: str) -> None:
+        self.db = ParserDatabase(database_url)
 
     def close(self) -> None:
         self.db.close()
@@ -55,11 +59,9 @@ class ReviewService:
     def _target(self, run_id: int, target_type: str, target_id: int) -> dict[str, Any]:
         if target_type not in TARGET_TABLES:
             raise ValueError(f"不支持的审核对象：{target_type}")
-        table, key = TARGET_TABLES[target_type]
-        row = self.db.connection.execute(
-            f"SELECT * FROM {table} WHERE {key}=? AND parse_run_id=?",
-            (target_id, run_id),
-        ).fetchone()
+        table_name, key = TARGET_TABLES[target_type]
+        table = knowledge_metadata.tables[table_name]
+        row = self.db.repository.run(select(table).where(table.c[key] == target_id, table.c.parse_run_id == run_id)).mappings().fetchone()
         if row is None:
             raise ValueError(f"ParseRun {run_id} 中不存在 {target_type} {target_id}")
         return dict(row)
@@ -69,36 +71,27 @@ class ReviewService:
     ) -> None:
         """节点结论确定后同步关闭其启发式标题问题，避免重复处置。"""
 
-        self.db.connection.execute(
-            """
+        self.db.repository.run(sql_text("""
             UPDATE validation_issue
-            SET resolved=1,resolved_by=?,resolved_at=?
-            WHERE parse_run_id=? AND node_id=?
+            SET resolved=1,resolved_by=:p0,resolved_at=:p1
+            WHERE parse_run_id=:p2 AND node_id=:p3
               AND issue_code='NODE_ARTICLE_TITLE_HEURISTIC' AND resolved=0
-            """,
-            (reviewed_by, reviewed_at, run_id, node_id),
-        )
+            """), {'p0': reviewed_by, 'p1': reviewed_at, 'p2': run_id, 'p3': node_id})
 
     def _rebuild_path_text(self, run_id: int, updated_at: str) -> None:
         """按父子顺序重算当前运行的路径文字，使标题调整同步影响后代。"""
 
-        rows = self.db.connection.execute(
-            """
+        rows = self.db.repository.run(sql_text("""
             SELECT id,parent_id,node_type,node_number,title,content
-            FROM policy_node WHERE parse_run_id=? ORDER BY level,order_no,id
-            """,
-            (run_id,),
-        ).fetchall()
+            FROM policy_node WHERE parse_run_id=:p0 ORDER BY level,order_no,id
+            """), {'p0': run_id}).mappings().fetchall()
         path_by_id: dict[int, str] = {}
         for row in rows:
             label = row["title"] or row["node_number"] or (row["content"] or "")[:32] or row["node_type"]
             parent_path = path_by_id.get(int(row["parent_id"])) if row["parent_id"] else None
             path_text = f"{parent_path} > {label}" if parent_path else str(label)
             path_by_id[int(row["id"])] = path_text
-            self.db.connection.execute(
-                "UPDATE policy_node SET path_text=?,updated_at=? WHERE id=? AND parse_run_id=?",
-                (path_text, updated_at, int(row["id"]), run_id),
-            )
+            self.db.repository.run(sql_text('UPDATE policy_node SET path_text=:p0,updated_at=:p1 WHERE id=:p2 AND parse_run_id=:p3'), {'p0': path_text, 'p1': updated_at, 'p2': int(row["id"]), 'p3': run_id})
 
     def decide(
         self,
@@ -123,55 +116,32 @@ class ReviewService:
         now = utc_now()
         with self.db.transaction():
             if target_type == "issue":
-                self.db.connection.execute(
-                    """
+                self.db.repository.run(sql_text("""
                     UPDATE validation_issue
-                    SET resolved=1, resolved_by=?, resolved_at=?
-                    WHERE id=? AND parse_run_id=?
-                    """,
-                    (reviewed_by, now, target_id, run_id),
-                )
+                    SET resolved=1, resolved_by=:p0, resolved_at=:p1
+                    WHERE id=:p2 AND parse_run_id=:p3
+                    """), {'p0': reviewed_by, 'p1': now, 'p2': target_id, 'p3': run_id})
             elif target_type in {"field", "node"}:
                 if action == "correct":
                     if target_type != "field" or corrected_value is None:
                         raise ValueError("correct 当前只支持字段，且必须提供 corrected_value")
-                    self.db.connection.execute(
-                        """
+                    self.db.repository.run(sql_text("""
                         UPDATE extracted_field
-                        SET normalized_value=?, review_status='confirmed'
-                        WHERE id=? AND parse_run_id=?
-                        """,
-                        (corrected_value, target_id, run_id),
-                    )
+                        SET normalized_value=:p0, review_status='confirmed'
+                        WHERE id=:p1 AND parse_run_id=:p2
+                        """), {'p0': corrected_value, 'p1': target_id, 'p2': run_id})
                 else:
                     status = "rejected" if action == "reject" else "confirmed"
-                    table = "extracted_field" if target_type == "field" else "policy_node"
-                    self.db.connection.execute(
-                        f"UPDATE {table} SET review_status=? WHERE id=? AND parse_run_id=?",
-                        (status, target_id, run_id),
-                    )
+                    table = knowledge_metadata.tables["extracted_field" if target_type == "field" else "policy_node"]
+                    self.db.repository.run(update(table).where(table.c.id == target_id, table.c.parse_run_id == run_id).values(review_status=status))
                     if target_type == "node" and action == "confirm":
                         self._resolve_article_title_issue(run_id, target_id, reviewed_by, now)
             after = self._target(run_id, target_type, target_id)
-            self.db.connection.execute(
-                """
+            self.db.repository.run(sql_text("""
                 INSERT INTO review_decision (
                     parse_run_id, target_type, target_id, action,
                     old_value_json, new_value_json, comment, reviewed_by, reviewed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    run_id,
-                    target_type,
-                    target_id,
-                    action,
-                    json.dumps(before, ensure_ascii=False),
-                    json.dumps(after, ensure_ascii=False),
-                    comment,
-                    reviewed_by,
-                    now,
-                ),
-            )
+                ) VALUES (:p0, :p1, :p2, :p3, :p4, :p5, :p6, :p7, :p8) RETURNING id"""), {'p0': run_id, 'p1': target_type, 'p2': target_id, 'p3': action, 'p4': json.dumps(before, ensure_ascii=False), 'p5': json.dumps(after, ensure_ascii=False), 'p6': comment, 'p7': reviewed_by, 'p8': now})
         return self.refresh_state(run_id)
 
     def decide_article_title(
@@ -190,9 +160,7 @@ class ReviewService:
             raise ValueError("条标题审核模式必须为TITLE或CONTENT")
         if not reviewed_by.strip():
             raise ValueError("reviewed_by不能为空")
-        run = self.db.connection.execute(
-            "SELECT status,review_status FROM parse_run WHERE id=?", (run_id,)
-        ).fetchone()
+        run = self.db.repository.run(sql_text('SELECT status,review_status FROM parse_run WHERE id=:p0'), {'p0': run_id}).mappings().fetchone()
         if run is None:
             raise ValueError(f"ParseRun不存在：{run_id}")
         if run["review_status"] in {"approved", "rejected"} or run["status"] == "failed":
@@ -222,32 +190,20 @@ class ReviewService:
 
         now = utc_now()
         with self.db.transaction():
-            self.db.connection.execute(
-                """
+            self.db.repository.run(sql_text("""
                 UPDATE policy_node
-                SET title=?,content=?,decision_method='human',rule_id=?,
-                    review_status='confirmed',review_reason=NULL,updated_at=?
-                WHERE id=? AND parse_run_id=?
-                """,
-                (selected_title, content, rule_id, now, node_id, run_id),
-            )
+                SET title=:p0,content=:p1,decision_method='human',rule_id=:p2,
+                    review_status='confirmed',review_reason=NULL,updated_at=:p3
+                WHERE id=:p4 AND parse_run_id=:p5
+                """), {'p0': selected_title, 'p1': content, 'p2': rule_id, 'p3': now, 'p4': node_id, 'p5': run_id})
             self._rebuild_path_text(run_id, now)
             self._resolve_article_title_issue(run_id, node_id, reviewed_by, now)
             after = self._target(run_id, "node", node_id)
-            self.db.connection.execute(
-                """
+            self.db.repository.run(sql_text("""
                 INSERT INTO review_decision (
                     parse_run_id,target_type,target_id,action,old_value_json,
                     new_value_json,comment,reviewed_by,reviewed_at
-                ) VALUES (?,?,?,?,?,?,?,?,?)
-                """,
-                (
-                    run_id, "node", node_id, action,
-                    json.dumps(before, ensure_ascii=False),
-                    json.dumps(after, ensure_ascii=False),
-                    comment, reviewed_by, now,
-                ),
-            )
+                ) VALUES (:p0,:p1,:p2,:p3,:p4,:p5,:p6,:p7,:p8) RETURNING id"""), {'p0': run_id, 'p1': "node", 'p2': node_id, 'p3': action, 'p4': json.dumps(before, ensure_ascii=False), 'p5': json.dumps(after, ensure_ascii=False), 'p6': comment, 'p7': reviewed_by, 'p8': now})
         return self.refresh_state(run_id)
 
     def decide_many(
@@ -285,60 +241,46 @@ class ReviewService:
             for before in before_rows:
                 target_id = int(before["id"])
                 if target_type == "node":
-                    self.db.connection.execute(
-                        "UPDATE policy_node SET review_status='confirmed' WHERE id=? AND parse_run_id=?",
-                        (target_id, run_id),
-                    )
+                    self.db.repository.run(sql_text("UPDATE policy_node SET review_status='confirmed' WHERE id=:p0 AND parse_run_id=:p1"), {'p0': target_id, 'p1': run_id})
                     self._resolve_article_title_issue(run_id, target_id, reviewed_by, now)
                 else:
-                    self.db.connection.execute(
-                        "UPDATE validation_issue SET resolved=1,resolved_by=?,resolved_at=? WHERE id=? AND parse_run_id=?",
-                        (reviewed_by, now, target_id, run_id),
-                    )
+                    self.db.repository.run(sql_text('UPDATE validation_issue SET resolved=1,resolved_by=:p0,resolved_at=:p1 WHERE id=:p2 AND parse_run_id=:p3'), {'p0': reviewed_by, 'p1': now, 'p2': target_id, 'p3': run_id})
                 after = self._target(run_id, target_type, target_id)
-                self.db.connection.execute(
-                    """
+                self.db.repository.run(sql_text("""
                     INSERT INTO review_decision (
                         parse_run_id,target_type,target_id,action,old_value_json,
                         new_value_json,comment,reviewed_by,reviewed_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?)
-                    """,
-                    (
-                        run_id, target_type, target_id, action,
-                        json.dumps(before, ensure_ascii=False),
-                        json.dumps(after, ensure_ascii=False), comment, reviewed_by, now,
-                    ),
-                )
+                    ) VALUES (:p0,:p1,:p2,:p3,:p4,:p5,:p6,:p7,:p8) RETURNING id"""), {'p0': run_id, 'p1': target_type, 'p2': target_id, 'p3': action, 'p4': json.dumps(before, ensure_ascii=False), 'p5': json.dumps(after, ensure_ascii=False), 'p6': comment, 'p7': reviewed_by, 'p8': now})
         return {**self.refresh_state(run_id), "processed_count": len(ids)}
 
     def _pending_counts(self, run_id: int) -> dict[str, int]:
         queries = {
-            "issues": "SELECT COUNT(*) FROM validation_issue WHERE parse_run_id=? AND resolved=0 AND severity IN ('error','review')",
-            "fields": "SELECT COUNT(*) FROM extracted_field WHERE parse_run_id=? AND review_status='pending'",
-            "nodes": "SELECT COUNT(*) FROM policy_node WHERE parse_run_id=? AND review_status='pending'",
-            "rejected_fields": "SELECT COUNT(*) FROM extracted_field WHERE parse_run_id=? AND review_status='rejected'",
-            "rejected_nodes": "SELECT COUNT(*) FROM policy_node WHERE parse_run_id=? AND review_status='rejected'",
+            "issues": "SELECT COUNT(*) FROM validation_issue WHERE parse_run_id=:run_id AND resolved=0 AND severity IN ('error','review')",
+            "fields": "SELECT COUNT(*) FROM extracted_field WHERE parse_run_id=:run_id AND review_status='pending'",
+            "nodes": "SELECT COUNT(*) FROM policy_node WHERE parse_run_id=:run_id AND review_status='pending'",
+            "rejected_fields": "SELECT COUNT(*) FROM extracted_field WHERE parse_run_id=:run_id AND review_status='rejected'",
+            "rejected_nodes": "SELECT COUNT(*) FROM policy_node WHERE parse_run_id=:run_id AND review_status='rejected'",
             "rejected_decisions": """
                 SELECT COUNT(*)
                 FROM review_decision rd
                 JOIN (
                     SELECT target_type, target_id, MAX(id) AS latest_id
                     FROM review_decision
-                    WHERE parse_run_id=? AND target_type IN ('issue','field','node')
+                    WHERE parse_run_id=:run_id AND target_type IN ('issue','field','node')
                     GROUP BY target_type, target_id
                 ) latest ON latest.latest_id=rd.id
                 WHERE rd.action='reject'
             """,
         }
         return {
-            name: int(self.db.connection.execute(query, (run_id,)).fetchone()[0])
+            name: int(self.db.repository.run(sql_text(query), {"run_id": run_id}).scalar_one())
             for name, query in queries.items()
         }
 
     def refresh_state(self, run_id: int) -> dict[str, Any]:
         """根据待审对象刷新运行状态，但不自动批准成为 active。"""
 
-        run = self.db.connection.execute("SELECT * FROM parse_run WHERE id=?", (run_id,)).fetchone()
+        run = self.db.repository.run(sql_text('SELECT * FROM parse_run WHERE id=:p0'), {'p0': run_id}).mappings().fetchone()
         if run is None:
             raise ValueError(f"ParseRun 不存在：{run_id}")
         counts = self._pending_counts(run_id)
@@ -358,16 +300,13 @@ class ReviewService:
             raise ValueError(f"失败的 ParseRun 不能批准：{state}")
         if state["review_status"] != "ready_for_approval":
             raise ValueError(f"ParseRun 尚不能批准：{state}")
-        run = self.db.connection.execute("SELECT * FROM parse_run WHERE id=?", (run_id,)).fetchone()
-        confirmed_rows = self.db.connection.execute(
-            """
+        run = self.db.repository.run(sql_text('SELECT * FROM parse_run WHERE id=:p0'), {'p0': run_id}).mappings().fetchone()
+        confirmed_rows = self.db.repository.run(sql_text("""
             SELECT field_name, raw_value, normalized_value, confidence, id
             FROM extracted_field
-            WHERE parse_run_id=? AND review_status='confirmed'
+            WHERE parse_run_id=:p0 AND review_status='confirmed'
             ORDER BY confidence DESC, id
-            """,
-            (run_id,),
-        ).fetchall()
+            """), {'p0': run_id}).mappings().fetchall()
         document_fields: dict[str, str] = {}
         for field in confirmed_rows:
             name = str(field["field_name"])
@@ -375,10 +314,7 @@ class ReviewService:
                 document_fields[name] = field["normalized_value"] or field["raw_value"]
         now = utc_now()
         with self.db.transaction():
-            self.db.connection.execute(
-                "UPDATE parse_run SET status='succeeded', review_status='approved', reviewed_by=?, reviewed_at=? WHERE id=?",
-                (reviewed_by, now, run_id),
-            )
+            self.db.repository.run(sql_text("UPDATE parse_run SET status='succeeded', review_status='approved', reviewed_by=:p0, reviewed_at=:p1 WHERE id=:p2"), {'p0': reviewed_by, 'p1': now, 'p2': run_id})
             # ParseRun批准只推进候选解析指针；公开元数据由IndexRun冻结的修订决定。
             document_updates: dict[str, Any] = {
                 "active_parse_run_id": run_id,
@@ -386,31 +322,16 @@ class ReviewService:
                 "review_status": "passed",
                 "updated_at": now,
             }
-            columns = ", ".join(f"{name}=?" for name in document_updates)
-            self.db.connection.execute(
-                f"UPDATE policy_document SET {columns} WHERE id=?",
-                (*document_updates.values(), int(run["document_id"])),
-            )
+            table = knowledge_metadata.tables["policy_document"]
+            self.db.repository.run(update(table).where(table.c.id == int(run["document_id"])).values(**document_updates))
             snapshot = {
                 "status": "succeeded",
                 "review_status": "approved",
                 "document_fields": document_fields,
             }
-            self.db.connection.execute(
-                """
+            self.db.repository.run(sql_text("""
                 INSERT INTO review_decision (
                     parse_run_id, target_type, target_id, action,
                     old_value_json, new_value_json, comment, reviewed_by, reviewed_at
-                ) VALUES (?, 'run', ?, 'approve', ?, ?, ?, ?, ?)
-                """,
-                (
-                    run_id,
-                    run_id,
-                    json.dumps(dict(run), ensure_ascii=False),
-                    json.dumps(snapshot, ensure_ascii=False),
-                    comment,
-                    reviewed_by,
-                    now,
-                ),
-            )
+                ) VALUES (:p0, 'run', :p1, 'approve', :p2, :p3, :p4, :p5, :p6) RETURNING id"""), {'p0': run_id, 'p1': run_id, 'p2': json.dumps(dict(run), ensure_ascii=False), 'p3': json.dumps(snapshot, ensure_ascii=False), 'p4': comment, 'p5': reviewed_by, 'p6': now})
         return {"run_id": run_id, **snapshot, "active_parse_run_id": run_id}

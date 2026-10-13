@@ -50,9 +50,9 @@ const SORT_OPTIONS = [
   { key: 'updated_at:desc', label: '最近更新', sort_by: 'updated_at', sort_order: 'desc' },
   { key: 'title:asc', label: '制度名称', sort_by: 'title', sort_order: 'asc' },
   { key: 'document_code:asc', label: '文号', sort_by: 'document_code', sort_order: 'asc' },
-  { key: 'issuer:asc', label: '发布机构', sort_by: 'issuer', sort_order: 'asc' },
+  { key: 'issuer:asc', label: '发文机关', sort_by: 'issuer', sort_order: 'asc' },
   { key: 'status:asc', label: '状态', sort_by: 'status', sort_order: 'asc' },
-  { key: 'responsibility_department:asc', label: '责任部门', sort_by: 'responsibility_department', sort_order: 'asc' },
+  { key: 'responsibility_department:asc', label: '拟稿部门', sort_by: 'responsibility_department', sort_order: 'asc' },
 ] as const;
 
 type SortBy = NonNullable<DocumentFilters['sort_by']>;
@@ -73,11 +73,11 @@ const COLUMN_SORT_LABELS: Record<SortBy, string> = {
   updated_at: '最近更新',
   title: '制度名称',
   document_code: '文号',
-  issuer: '发布机构',
-  publish_date: '发布日期',
+  issuer: '发文机关',
+  publish_date: '发文日期',
   effective_date: '生效日期',
   status: '状态',
-  responsibility_department: '责任部门',
+  responsibility_department: '拟稿部门',
 };
 
 function positiveInteger(value: string | null, fallback: number): number {
@@ -227,7 +227,7 @@ export function DocumentsPage() {
 
   const applyDateFilter = () => {
     if (draftDateFrom && draftDateTo && draftDateFrom > draftDateTo) {
-      message.warning('发布日期起始时间不能晚于结束时间');
+      message.warning('发文日期起始时间不能晚于结束时间');
       return;
     }
     updateFilters({ publish_date_from: draftDateFrom, publish_date_to: draftDateTo });
@@ -241,7 +241,7 @@ export function DocumentsPage() {
     filters.department ? { key: 'department', label: filters.department, clear: () => updateFilters({ department: '' }) } : null,
     filters.publish_date_from || filters.publish_date_to ? {
       key: 'publish_date',
-      label: `发布日期：${filters.publish_date_from || '不限'} 至 ${filters.publish_date_to || '不限'}`,
+      label: `发文日期：${filters.publish_date_from || '不限'} 至 ${filters.publish_date_to || '不限'}`,
       clear: () => updateFilters({ publish_date_from: '', publish_date_to: '' }),
     } : null,
   ].filter((item): item is { key: string; label: string; clear: () => void } => item != null);
@@ -275,10 +275,10 @@ export function DocumentsPage() {
       ),
     },
     { title: '文号', dataIndex: 'document_code', width: 170, sorter: true, sortOrder: tableSortOrder('document_code'), render: (value: string | null) => <span className="document-meta-text">{value ?? '-'}</span> },
-    { title: '发布机构', dataIndex: 'issuer', width: 210, responsive: ['xl'], sorter: true, sortOrder: tableSortOrder('issuer'), render: (value: string | null) => <span className="document-meta-text">{value ?? '-'}</span> },
-    { title: '发布日期', dataIndex: 'publish_date', width: 125, sorter: true, sortOrder: tableSortOrder('publish_date'), render: (value: string | null) => <span className="document-meta-text">{value ?? '-'}</span> },
+    { title: '发文机关', dataIndex: 'issuer', width: 210, responsive: ['xl'], sorter: true, sortOrder: tableSortOrder('issuer'), render: (value: string | null) => <span className="document-meta-text">{value ?? '-'}</span> },
+    { title: '发文日期', dataIndex: 'publish_date', width: 125, sorter: true, sortOrder: tableSortOrder('publish_date'), render: (value: string | null) => <span className="document-meta-text">{value ?? '-'}</span> },
     { title: '状态', dataIndex: 'status', width: 110, sorter: true, sortOrder: tableSortOrder('status'), render: (value: string) => <Tag className={`document-status-tag ${documentStatusClass(value)}`}>{value}</Tag> },
-    { title: '责任部门', dataIndex: 'responsibility_department', width: 190, responsive: ['lg'], sorter: true, sortOrder: tableSortOrder('responsibility_department'), render: (value: string | null) => <span className="document-meta-text">{value ?? '-'}</span> },
+    { title: '拟稿部门', dataIndex: 'responsibility_department', width: 190, responsive: ['lg'], sorter: true, sortOrder: tableSortOrder('responsibility_department'), render: (value: string | null) => <span className="document-meta-text">{value ?? '-'}</span> },
     {
       title: '操作',
       key: 'action',
@@ -305,7 +305,7 @@ export function DocumentsPage() {
 
   const dateLabel = filters.publish_date_from || filters.publish_date_to
     ? `${filters.publish_date_from || '不限'} 至 ${filters.publish_date_to || '不限'}`
-    : '发布日期：不限';
+    : '发文日期：不限';
 
   return (
     <div className="page-stack document-library-page">
@@ -346,7 +346,7 @@ export function DocumentsPage() {
           showSearch
           optionFilterProp="label"
           prefix={<UiIcon icon={BankOutlined} />}
-          placeholder="发布机构：全部"
+          placeholder="发文机关：全部"
           value={filters.issuer || undefined}
           options={filterOptions(facets.issuers)}
           onChange={(issuer) => updateFilters({ issuer: issuer ?? '' })}
@@ -357,7 +357,7 @@ export function DocumentsPage() {
           showSearch
           optionFilterProp="label"
           prefix={<UiIcon icon={TeamOutlined} />}
-          placeholder="责任部门：全部"
+          placeholder="拟稿部门：全部"
           value={filters.department || undefined}
           options={filterOptions(facets.departments)}
           onChange={(department) => updateFilters({ department: department ?? '' })}
@@ -369,11 +369,11 @@ export function DocumentsPage() {
           placement="bottomLeft"
           content={(
             <div className="document-date-filter">
-              <Typography.Text strong>发布日期范围</Typography.Text>
+              <Typography.Text strong>发文日期范围</Typography.Text>
               <Space align="center">
-                <Input aria-label="发布日期从" type="date" value={draftDateFrom} onChange={(event) => setDraftDateFrom(event.target.value)} />
+                <Input aria-label="发文日期从" type="date" value={draftDateFrom} onChange={(event) => setDraftDateFrom(event.target.value)} />
                 <Typography.Text type="secondary">至</Typography.Text>
-                <Input aria-label="发布日期至" type="date" value={draftDateTo} onChange={(event) => setDraftDateTo(event.target.value)} />
+                <Input aria-label="发文日期至" type="date" value={draftDateTo} onChange={(event) => setDraftDateTo(event.target.value)} />
               </Space>
               <Space className="document-date-actions">
                 <Button onClick={() => { setDraftDateFrom(''); setDraftDateTo(''); }}>清空</Button>

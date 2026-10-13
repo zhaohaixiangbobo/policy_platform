@@ -1,0 +1,103 @@
+# 文件说明：P5独立空白ARM64部署；配合字体与运行覆盖配置使用，不包含构建或本地数据。
+name: policy-platform-p5
+x-backend: &backend
+  image: policy-platform/backend:p5-20261012-arm64
+  platform: linux/arm64
+  pull_policy: never
+  init: true
+  environment:
+    PLATFORM_ENV_FILE: /run/config/runtime.env
+    PLATFORM_WORKER_LOCK_DIR: /logs/worker-locks
+  volumes:
+    - {type: bind, source: /data/policy-platform/config/runtime.env, target: /run/config/runtime.env, read_only: true, bind: {create_host_path: false}}
+    - knowledge_files:/data/knowledge
+    - material_files:/data/materials
+    - app_logs:/logs
+  depends_on:
+    postgres:
+      condition: service_healthy
+  stop_grace_period: 120s
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '3'
+services:
+  postgres:
+    image: policy-platform/postgres:17.11-p5-arm64
+    platform: linux/arm64
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - {type: bind, source: /data/policy-platform/config/init.sql, target: /docker-entrypoint-initdb.d/10-platform.sql, read_only: true, bind: {create_host_path: false}}
+      - {type: bind, source: /data/policy-platform/config/postgres-password, target: /run/secrets/postgres_password, read_only: true, bind: {create_host_path: false}}
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U postgres -d postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+  qdrant:
+    image: policy-platform/qdrant:p5-20261012-arm64
+    platform: linux/arm64
+    pull_policy: never
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    logging: *logging
+  api:
+    <<: *backend
+    restart: 'no'
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8020/api/v1/health/ready', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  ingestion-worker:
+    <<: *backend
+    command: [python, worker.py]
+    restart: 'no'
+  learning-worker:
+    <<: *backend
+    command: [python, learning_worker.py]
+    restart: 'no'
+  web:
+    image: policy-platform/web:p5-20261012-arm64
+    platform: linux/arm64
+    pull_policy: never
+    ports: ['10.9.14.171:80:8080']
+    volumes:
+      - {type: bind, source: ./deploy/nginx.conf, target: /etc/nginx/conf.d/default.conf, read_only: true, bind: {create_host_path: false}}
+      - {type: bind, source: ./deploy/portal, target: /usr/share/nginx/html/runtime, read_only: true, bind: {create_host_path: false}}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+  migrate:
+    image: policy-platform/backend:p5-20261012-arm64
+    platform: linux/arm64
+    pull_policy: never
+    profiles: [tools]
+    working_dir: /app
+    command: [python, scripts/migrate-platform-pg.py, --env-file, /run/config/migration.env]
+    volumes:
+      - {type: bind, source: /data/policy-platform/config/migration.env, target: /run/config/migration.env, read_only: true, bind: {create_host_path: false}}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *logging
+  initialize:
+    <<: *backend
+    profiles: [tools]
+    working_dir: /app
+    command: [python, scripts/initialize-platform-pg.py, --env-file, /run/config/runtime.env]
+volumes:
+  postgres_data:
+  qdrant_data:
+  knowledge_files:
+  material_files:
+  app_logs:

@@ -1,0 +1,143 @@
+/*
+ * 文件说明：制度模块顶栏账户入口（PortalAccount）样式。
+ * 触发器为"头像 + 小箭头"胶囊；展开面板为身份信息头 + antd 菜单，面板外壳与阴影由本文件统一接管。
+ * 兼容基线 Chrome 89。
+ */
+
+/* ---------- 触发器 ---------- */
+.account-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 40px;
+    padding: 4px 10px 4px 4px;
+    color: #6b7a93;
+    cursor: pointer;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    transition: background-color .25s, border-color .25s, box-shadow .3s;
+}
+
+.account-trigger:hover,
+.account-trigger.ant-dropdown-open {
+    border-color: #e3e9f3;
+    background: #f5f8fd;
+    box-shadow: 0 6px 16px -10px rgba(31, 79, 214, .45);
+}
+
+.account-trigger:focus-visible {
+    outline: 2px solid rgba(57, 120, 239, .5);
+    outline-offset: 2px;
+}
+
+.account-avatar {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(145deg, #3978ef, #1f4fd6);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 0 0 2px #fff, 0 0 0 3px rgba(57, 120, 239, .18);
+    transition: transform .4s cubic-bezier(.2, .8, .2, 1);
+}
+
+.account-trigger:hover .account-avatar {
+    transform: scale(1.06);
+}
+
+.account-caret {
+    font-size: 10px;
+    transition: transform .3s cubic-bezier(.2, .8, .2, 1);
+}
+
+/* 面板展开时箭头翻转，提示当前状态 */
+.account-trigger.ant-dropdown-open .account-caret {
+    transform: rotate(180deg);
+}
+
+/* ---------- 展开面板 ---------- */
+.account-panel {
+    width: 232px;
+    overflow: hidden;
+    border: 1px solid #e8edf5;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 24px 48px -16px rgba(16, 38, 79, .22), 0 6px 14px -8px rgba(16, 38, 79, .12);
+}
+
+.account-panel-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 16px 14px;
+    background:
+        radial-gradient(120% 140% at 0% 0%, rgba(57, 120, 239, .14), rgba(57, 120, 239, 0) 60%),
+        linear-gradient(180deg, #f7faff, #fff);
+    border-bottom: 1px solid #eef2f8;
+}
+
+.account-avatar.is-lg {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+}
+
+.account-panel-who {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+.account-panel-who strong {
+    overflow: hidden;
+    font-size: 14px;
+    color: #10264f;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.account-panel-who small {
+    overflow: hidden;
+    font-size: 12px;
+    color: #8390a4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 去掉 antd 菜单自带的外壳，交由 .account-panel 统一呈现 */
+.account-dropdown.ant-dropdown .account-panel .ant-dropdown-menu {
+    padding: 6px;
+    background: transparent;
+    box-shadow: none;
+}
+
+.account-dropdown.ant-dropdown .account-panel .ant-dropdown-menu-item {
+    gap: 2px;
+    padding: 9px 10px;
+    border-radius: 10px;
+    transition: background-color .2s, padding-left .25s cubic-bezier(.2, .8, .2, 1);
+}
+
+/* 悬停时条目轻微右移，形成指向感 */
+.account-dropdown.ant-dropdown .account-panel .ant-dropdown-menu-item:hover {
+    padding-left: 14px;
+}
+
+.account-dropdown.ant-dropdown .account-panel .ant-dropdown-menu-item-divider {
+    margin: 4px 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .account-trigger,
+    .account-avatar,
+    .account-caret,
+    .account-dropdown.ant-dropdown .account-panel .ant-dropdown-menu-item {
+        transition: none;
+    }
+}

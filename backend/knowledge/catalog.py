@@ -6,8 +6,12 @@ ParseRun冒充正式正文。
 
 from __future__ import annotations
 
+from sqlalchemy import text as sql_text, select, update, insert, bindparam
+from knowledge.storage.schema import metadata as knowledge_metadata
+
+
 import json
-import sqlite3
+from knowledge.storage.repository import CoreRepository
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -100,7 +104,7 @@ class KnowledgeCatalogService:
 
     def __init__(self, paths: KnowledgePaths, profile_name: str | None = None) -> None:
         self.paths = paths
-        self.profile_name = profile_name or IndexConfig().profile_name
+        self.profile_name = profile_name or IndexConfig.from_environment().profile_name
 
     @staticmethod
     def _published_condition(document_alias: str = "d") -> str:
@@ -112,26 +116,16 @@ class KnowledgeCatalogService:
                 FROM index_profile ip
                 JOIN index_run ir ON ir.id=ip.active_index_run_id
                 JOIN index_run_source src ON src.index_run_id=ir.id
-                WHERE ip.profile_name=?
+                WHERE ip.profile_name=:profile
                   AND ir.status='succeeded' AND ir.activation_status='active'
                   AND src.document_id={document_alias}.id
             )
         """
 
     @contextmanager
-    def _connection(self) -> Iterator[sqlite3.Connection]:
-        database_path = self.paths.database_path.resolve()
-        if not database_path.is_file():
-            raise RuntimeError(f"知识数据库不存在：{database_path}")
-        connection = sqlite3.connect(
-            f"file:{database_path.as_posix()}?mode=ro", uri=True
-        )
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA query_only = ON")
-        try:
+    def _connection(self) -> Iterator[CoreRepository]:
+        with CoreRepository(self.paths.database_url) as connection:
             yield connection
-        finally:
-            connection.close()
 
     def list_documents(
         self,
@@ -149,29 +143,30 @@ class KnowledgeCatalogService:
         query_scope: str | None = None,
         allowed_document_ids: Sequence[int] | None = None,
     ) -> tuple[list[CatalogDocument], int]:
-        conditions = ["ip.profile_name=?", "ir.status='succeeded'", "ir.activation_status='active'"]
-        parameters: list[Any] = [self.profile_name]
+        conditions = ["ip.profile_name=:profile", "ir.status='succeeded'", "ir.activation_status='active'"]
+        parameters: dict[str, Any] = {"profile": self.profile_name}
         if keyword:
             term = f"%{keyword.strip()}%"
             conditions.append(
                 """(
-                    m.title LIKE ? OR m.document_code LIKE ? OR m.issuing_org LIKE ?
-                    OR m.owner_department LIKE ? OR EXISTS (
+                    m.title LIKE :keyword OR m.document_code LIKE :keyword OR m.issuing_org LIKE :keyword
+                    OR m.owner_department LIKE :keyword OR EXISTS (
                         SELECT 1 FROM policy_node n
                         WHERE n.document_id=d.id AND n.parse_run_id=src.parse_run_id
-                          AND (n.raw_text LIKE ? OR n.content LIKE ? OR n.title LIKE ? OR n.path_text LIKE ?)
+                          AND (n.raw_text LIKE :keyword OR n.content LIKE :keyword OR n.title LIKE :keyword OR n.path_text LIKE :keyword)
                     )
                 )"""
             )
-            parameters.extend([term] * 8)
+            parameters["keyword"] = term
         for column, value in (
             ("m.status", status),
             ("m.issuing_org", issuer),
             ("m.owner_department", department),
         ):
             if value:
-                conditions.append(f"{column}=?")
-                parameters.append(
+                name = column.split(".")[1]
+                conditions.append(f"{column}=:{name}")
+                parameters[name] = (
                     STATUS_STORAGE_NAMES.get(value, value) if column == "m.status" else value
                 )
         if query_scope == "CURRENT":
@@ -179,19 +174,16 @@ class KnowledgeCatalogService:
         elif query_scope == "HISTORICAL":
             conditions.append("m.status IN ('repealed','expired')")
         if publish_date_from:
-            conditions.append("m.publish_date>=?")
-            parameters.append(publish_date_from)
+            conditions.append("m.publish_date>=:date_from")
+            parameters["date_from"] = publish_date_from
         if publish_date_to:
-            conditions.append("m.publish_date<=?")
-            parameters.append(publish_date_to)
+            conditions.append("m.publish_date<=:date_to")
+            parameters["date_to"] = publish_date_to
         if allowed_document_ids is not None:
             normalized_ids = sorted(set(int(value) for value in allowed_document_ids))
             if normalized_ids:
-                # 使用JSON数组作为单参数，避免未来权限集合超过SQLite变量数量上限。
-                conditions.append(
-                    "d.id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))"
-                )
-                parameters.append(json.dumps(normalized_ids, separators=(",", ":")))
+                conditions.append("d.id = ANY(:allowed_ids)")
+                parameters["allowed_ids"] = normalized_ids
             else:
                 conditions.append("1=0")
 
@@ -200,33 +192,30 @@ class KnowledgeCatalogService:
         direction = "ASC" if sort_order == "asc" else "DESC"
         base_sql = """
             FROM policy_document d
-            JOIN index_profile ip ON ip.profile_name=?
+            JOIN index_profile ip ON ip.profile_name=:profile
             JOIN index_run ir ON ir.id=ip.active_index_run_id
             JOIN index_run_source src ON src.index_run_id=ir.id AND src.document_id=d.id
             JOIN document_metadata_revision m ON m.id=src.metadata_revision_id
             JOIN parse_run pr ON pr.id=src.parse_run_id
         """
-        # profile_name由JOIN消费，条件中的profile_name参数继续保持统一顺序。
-        parameters = [self.profile_name, *parameters]
-        conditions[0] = "ip.profile_name=?"
         with self._connection() as connection:
             total = int(
-                connection.execute(
-                    f"SELECT COUNT(*) {base_sql} WHERE {where_sql}", parameters
-                ).fetchone()[0]
+                connection.run(
+                    sql_text(f"SELECT COUNT(*) {base_sql} WHERE {where_sql}"), parameters
+                ).scalar_one()
             )
-            rows = connection.execute(
-                f"""
+            rows = connection.run(
+                sql_text(f"""
                 SELECT d.id,m.title,m.document_code,m.issuing_org,m.owner_department,
                        m.status,m.publish_date,m.effective_date,src.parse_run_id AS active_parse_run_id,
                        m.updated_at,pr.pdf_path
                 {base_sql}
                 WHERE {where_sql}
                 ORDER BY {sort_column} IS NULL, {sort_column} {direction}, d.id DESC
-                LIMIT ? OFFSET ?
-                """,
-                [*parameters, page_size, (page - 1) * page_size],
-            ).fetchall()
+                LIMIT :limit OFFSET :offset
+                """),
+                {**parameters, "limit": page_size, "offset": (page - 1) * page_size},
+            ).mappings().fetchall()
         return [self._document(row) for row in rows], total
 
     def list_facets(
@@ -246,28 +235,22 @@ class KnowledgeCatalogService:
         """返回 active IndexRun 与其中每个具体制度版本的冻结状态。"""
 
         with self._connection() as connection:
-            profile = connection.execute(
-                """
+            profile = connection.run(sql_text("""
                 SELECT ip.active_index_run_id
                 FROM index_profile ip
                 JOIN index_run ir ON ir.id=ip.active_index_run_id
-                WHERE ip.profile_name=?
+                WHERE ip.profile_name=:p0
                   AND ir.status='succeeded' AND ir.activation_status='active'
-                """,
-                (self.profile_name,),
-            ).fetchone()
+                """), {'p0': self.profile_name}).mappings().fetchone()
             if profile is None or profile["active_index_run_id"] is None:
                 raise RuntimeError("当前没有正式可查询的 active IndexRun")
-            rows = connection.execute(
-                """
+            rows = connection.run(sql_text("""
                 SELECT src.document_id,m.status
                 FROM index_run_source src
                 JOIN document_metadata_revision m ON m.id=src.metadata_revision_id
-                WHERE src.index_run_id=?
+                WHERE src.index_run_id=:p0
                 ORDER BY src.document_id
-                """,
-                (int(profile["active_index_run_id"]),),
-            ).fetchall()
+                """), {'p0': int(profile["active_index_run_id"])}).mappings().fetchall()
         return QueryableIndexSnapshot(
             index_run_id=int(profile["active_index_run_id"]),
             documents=tuple(
@@ -278,21 +261,21 @@ class KnowledgeCatalogService:
 
     def get_document(self, document_id: int) -> CatalogDocument:
         with self._connection() as connection:
-            row = connection.execute(
-                f"""
+            row = connection.run(
+                sql_text("""
                 SELECT d.id,m.title,m.document_code,m.issuing_org,m.owner_department,
                        m.status,m.publish_date,m.effective_date,src.parse_run_id AS active_parse_run_id,
                        m.updated_at,pr.pdf_path
                 FROM policy_document d
-                JOIN index_profile ip ON ip.profile_name=?
+                JOIN index_profile ip ON ip.profile_name=:profile
                 JOIN index_run ir ON ir.id=ip.active_index_run_id
                 JOIN index_run_source src ON src.index_run_id=ir.id AND src.document_id=d.id
                 JOIN document_metadata_revision m ON m.id=src.metadata_revision_id
                 JOIN parse_run pr ON pr.id=src.parse_run_id
-                WHERE d.id=? AND ir.status='succeeded' AND ir.activation_status='active'
-                """,
-                (self.profile_name, document_id),
-            ).fetchone()
+                WHERE d.id=:document_id AND ir.status='succeeded' AND ir.activation_status='active'
+                """),
+                {"profile": self.profile_name, "document_id": document_id},
+            ).mappings().fetchone()
         if row is None:
             raise CatalogDocumentNotFoundError
         return self._document(row)
@@ -300,8 +283,7 @@ class KnowledgeCatalogService:
     def list_nodes(self, document_id: int) -> tuple[int, list[CatalogNode]]:
         document = self.get_document(document_id)
         with self._connection() as connection:
-            rows = connection.execute(
-                """
+            rows = connection.run(sql_text("""
                 SELECT id,document_id,parse_run_id,parent_id,node_type,node_number,
                        title,COALESCE(raw_text,content,'') AS text,path_text,order_no,
                        page_start,page_end,
@@ -314,11 +296,9 @@ class KnowledgeCatalogService:
                            LIMIT 1
                        ) END AS table_structure_json
                 FROM policy_node
-                WHERE document_id=? AND parse_run_id=?
+                WHERE document_id=:p0 AND parse_run_id=:p1
                 ORDER BY order_no,id
-                """,
-                (document_id, document.active_parse_run_id),
-            ).fetchall()
+                """), {'p0': document_id, 'p1': document.active_parse_run_id}).mappings().fetchall()
         nodes = [
             CatalogNode(
                 id=int(row["id"]),
@@ -340,7 +320,7 @@ class KnowledgeCatalogService:
         return document.active_parse_run_id, nodes
 
     @staticmethod
-    def _table_structure(row: sqlite3.Row) -> dict[str, Any] | None:
+    def _table_structure(row: dict[str, Any]) -> dict[str, Any] | None:
         """读取 Parser 已保存的表格几何信息；异常旧数据保持文本降级能力。"""
 
         value = row["table_structure_json"]
@@ -354,18 +334,18 @@ class KnowledgeCatalogService:
 
     def resolve_pdf(self, document_id: int) -> Path:
         with self._connection() as connection:
-            row = connection.execute(
-                f"""
+            row = connection.run(
+                sql_text("""
                 SELECT pr.pdf_path
                 FROM policy_document d
-                JOIN index_profile ip ON ip.profile_name=?
+                JOIN index_profile ip ON ip.profile_name=:profile
                 JOIN index_run ir ON ir.id=ip.active_index_run_id
                 JOIN index_run_source src ON src.index_run_id=ir.id AND src.document_id=d.id
                 JOIN parse_run pr ON pr.id=src.parse_run_id
-                WHERE d.id=? AND ir.status='succeeded' AND ir.activation_status='active'
-                """,
-                (self.profile_name, document_id),
-            ).fetchone()
+                WHERE d.id=:document_id AND ir.status='succeeded' AND ir.activation_status='active'
+                """),
+                {"profile": self.profile_name, "document_id": document_id},
+            ).mappings().fetchone()
         if row is None:
             raise CatalogDocumentNotFoundError
         relative_path = str(row["pdf_path"] or "").replace("\\", "/")
@@ -381,7 +361,7 @@ class KnowledgeCatalogService:
         return candidate
 
     @staticmethod
-    def _document(row: sqlite3.Row) -> CatalogDocument:
+    def _document(row: dict[str, Any]) -> CatalogDocument:
         return CatalogDocument(
             id=int(row["id"]),
             title=str(row["title"] or row["document_code"] or f"制度{row['id']}"),
@@ -398,27 +378,24 @@ class KnowledgeCatalogService:
 
     def _distinct(
         self,
-        connection: sqlite3.Connection,
+        connection: CoreRepository,
         column: str,
         allowed_document_ids: Sequence[int] | None = None,
     ) -> list[str]:
         access_sql = ""
-        parameters: list[Any] = [self.profile_name]
+        parameters: dict[str, Any] = {"profile": self.profile_name}
         if allowed_document_ids is not None:
             normalized_ids = sorted(set(int(value) for value in allowed_document_ids))
             if normalized_ids:
-                access_sql = (
-                    " AND d.id IN "
-                    "(SELECT CAST(value AS INTEGER) FROM json_each(?))"
-                )
-                parameters.append(json.dumps(normalized_ids, separators=(",", ":")))
+                access_sql = " AND d.id = ANY(:allowed_ids)"
+                parameters["allowed_ids"] = normalized_ids
             else:
                 access_sql = " AND 1=0"
-        rows = connection.execute(
-            f"""
+        rows = connection.run(
+            sql_text(f"""
             SELECT DISTINCT m.{column}
             FROM policy_document d
-            JOIN index_profile ip ON ip.profile_name=?
+            JOIN index_profile ip ON ip.profile_name=:profile
             JOIN index_run ir ON ir.id=ip.active_index_run_id
             JOIN index_run_source src ON src.index_run_id=ir.id AND src.document_id=d.id
             JOIN document_metadata_revision m ON m.id=src.metadata_revision_id
@@ -426,13 +403,13 @@ class KnowledgeCatalogService:
               AND m.{column} IS NOT NULL AND m.{column}!=''
               {access_sql}
             ORDER BY m.{column}
-            """,
+            """),
             parameters,
         ).fetchall()
         return [str(row[0]) for row in rows]
 
     @classmethod
-    def _node_display_title(cls, row: sqlite3.Row) -> str | None:
+    def _node_display_title(cls, row: dict[str, Any]) -> str | None:
         """恢复旧公开视图的标题规则，使章、条、项按编号稳定分段。"""
 
         number = cls._compact_text(row["node_number"])

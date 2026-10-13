@@ -8,18 +8,25 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import json
+import logging
 import os
 import platform
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass
+import signal
+import tempfile
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from pypdf import PdfReader
 
 from .ooxml import sha256_file
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -30,6 +37,7 @@ class RenderResult:
     operating_system: str
     page_count: int
     pdf_checksum: str
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -41,7 +49,7 @@ class PageMappingResult:
     issues: list[dict[str, Any]]
 
 
-def render_docx_to_pdf(
+def _render_docx_to_pdf(
     docx_path: Path,
     pdf_path: Path,
     *,
@@ -53,8 +61,7 @@ def render_docx_to_pdf(
     docx_path = docx_path.resolve()
     pdf_path = pdf_path.resolve()
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    if pdf_path.exists():
-        pdf_path.unlink()
+    metadata: dict[str, Any] = {}
 
     selected = engine.strip().lower()
     if selected not in {"auto_headless", "libreoffice", "word"}:
@@ -62,8 +69,12 @@ def render_docx_to_pdf(
 
     soffice = _resolve_libreoffice(libreoffice_path)
     if selected in {"auto_headless", "libreoffice"} and soffice:
-        engine_version = _render_with_libreoffice(soffice, docx_path, pdf_path)
-        engine_name = "libreoffice_headless"
+        if os.environ.get("POLICY_LIBREOFFICE_UNO_PYTHON"):
+            engine_version, metadata = _render_with_uno(soffice, docx_path, pdf_path)
+            engine_name = "libreoffice_uno"
+        else:
+            engine_version = _render_with_libreoffice(soffice, docx_path, pdf_path)
+            engine_name = "libreoffice_headless"
     elif selected == "libreoffice":
         raise RuntimeError("已固定使用LibreOffice，但未找到soffice可执行文件")
     elif os.name == "nt" and importlib.util.find_spec("docx2pdf"):
@@ -87,6 +98,8 @@ def render_docx_to_pdf(
     if not pdf_path.exists() or pdf_path.stat().st_size == 0:
         raise RuntimeError("PDF 渲染完成但没有生成有效文件")
     page_count = len(PdfReader(str(pdf_path)).pages)
+    if page_count < 1:
+        raise RuntimeError("转换 PDF 没有页面")
     return RenderResult(
         pdf_path=pdf_path,
         engine=engine_name,
@@ -94,7 +107,73 @@ def render_docx_to_pdf(
         operating_system=f"{platform.system()} {platform.release()}",
         page_count=page_count,
         pdf_checksum=sha256_file(pdf_path),
+        metadata=metadata,
     )
+
+
+def render_docx_to_pdf(docx_path: Path, pdf_path: Path, *, engine: str = "auto_headless",
+                       libreoffice_path: str | None = None) -> RenderResult:
+    """在同一文件系统临时转换，校验成功后原子保存；已有历史文件始终保留。"""
+    pdf_path = pdf_path.resolve()
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    if pdf_path.exists():
+        raise FileExistsError(f"PDF 已存在，请使用新的 ParseRun 路径：{pdf_path}")
+    with tempfile.TemporaryDirectory(prefix=".render-", dir=pdf_path.parent) as directory:
+        result = _render_docx_to_pdf(docx_path, Path(directory) / "result.pdf",
+                                   engine=engine, libreoffice_path=libreoffice_path)
+        # 硬链接是原子且不覆盖的，同名并发请求只会有一个成功。
+        os.link(result.pdf_path, pdf_path)
+        result.pdf_path = pdf_path
+        return result
+
+
+def _run_isolated(command: list[str], timeout: float) -> str:
+    """Linux 转换拥有独立进程组，异常/超时统一清理全部后代。"""
+    if os.name != "posix":
+        raise RuntimeError("UNO 子进程模式当前只支持 Linux 容器，Windows 保持原有渲染配置")
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               text=True, encoding="utf-8", start_new_session=True)
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+        if process.returncode:
+            raise RuntimeError(f"UNO 转换失败（{process.returncode}）：{stderr[-2000:]}")
+        return stdout
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"UNO 转换超过 {timeout:g} 秒，已终止本次转换") from exc
+    finally:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.communicate()
+
+
+def _render_with_uno(soffice: str, source: Path, output: Path) -> tuple[str, dict]:
+    from .render_environment import inspect_environment
+
+    environment = inspect_environment()
+    timeout = float(os.environ.get("POLICY_DOCX_RENDER_TIMEOUT_SECONDS", "180"))
+    if not 0 < timeout <= 3600:
+        raise ValueError("DOCX 转换超时须在 0 到 3600 秒之间")
+    report = output.parent / "render.json"
+    started = time.monotonic()
+    LOGGER.info("event=docx_render_started engine=libreoffice_uno timeout=%s", timeout)
+    try:
+        _run_isolated([os.environ["POLICY_LIBREOFFICE_UNO_PYTHON"],
+                       str(Path(__file__).with_name("uno_convert.py")),
+                       "--source", str(source), "--output", str(output),
+                       "--profile", str(output.parent / "profile"),
+                       "--report", str(report), "--soffice", soffice], timeout)
+    except Exception:
+        LOGGER.exception("event=docx_render_failed elapsed_ms=%.0f", (time.monotonic() - started) * 1000)
+        raise
+    metadata = json.loads(report.read_text(encoding="utf-8"))
+    metadata["environment"] = environment
+    version = subprocess.run([soffice, "--version"], capture_output=True, text=True,
+                             check=True, timeout=10).stdout.strip()
+    LOGGER.info("event=docx_render_completed profile=%s compression=%s elapsed_ms=%.0f",
+                metadata["profile"], metadata["compression_after"], (time.monotonic() - started) * 1000)
+    return version, metadata
 
 
 def _resolve_libreoffice(configured_path: str | None) -> str | None:

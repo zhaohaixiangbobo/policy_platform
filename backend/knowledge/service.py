@@ -1,6 +1,6 @@
 """文件说明：在 Platform 进程内管理单线程 RAG Runtime 并输出稳定公开契约。
 
-Runtime 及其 SQLite/HTTP 客户端始终在同一专用线程中创建、查询和关闭。
+Runtime及其Knowledge仓储/HTTP客户端始终在同一专用线程中创建、查询和关闭。
 应用启动不连接 Qdrant 或模型服务，首次问答时才惰性初始化知识查询栈。
 """
 
@@ -177,7 +177,7 @@ class KnowledgeService:
         document_ids: tuple[int, ...],
         queued_at: float,
     ) -> QueryResponse:
-        """Runtime的创建、SQLite访问和资源释放均限定在专用线程。"""
+        """Runtime的创建、Knowledge访问和资源释放均限定在专用线程。"""
 
         with query_trace(request_id, queued_at):
             return self._execute_query(question, request_id, query_scope, document_scope_mode, document_ids)
